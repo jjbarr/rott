@@ -21,13 +21,17 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <dos.h>
 #include <string.h>
+
+#ifdef DOS
+#include <dos.h>
+#include <conio.h>
+#endif
+
 #include "rt_def.h"
 #include "_z_zone.h"
 #include "z_zone.h"
 #include "rt_util.h"
-#include <conio.h>
 #include "develop.h"
 #include "rt_net.h"
 
@@ -63,7 +67,7 @@ int zonememorystarted=0;
 
 static memzone_t       *mainzone;
 static memzone_t       *levelzone;
-static levelzonesize=LEVELZONESIZE;
+static int levelzonesize=LEVELZONESIZE;
 static struct meminfo
    {
    unsigned LargestBlockAvail;
@@ -162,7 +166,7 @@ void Z_Init (int size, int min)
    levelzone = Z_AllocateZone (levelzonesize);
 
    if (!quiet)
-      printf("Z_INIT: %ld bytes\n",(maxsize+levelzonesize));
+      printf("Z_INIT: %ld bytes\n",(long int)(maxsize+levelzonesize));
 
    if (maxsize<(min+(min>>1)))
       {
@@ -523,14 +527,18 @@ void Z_DumpHeap (int lowtag, int hightag)
                         totalsize+=block->size;
                         }
 
-                if (block->next == &mainzone->blocklist)
+                if (block->next == &mainzone->blocklist) {
                         break;                  // all blocks have been hit
-                if ( (byte *)block + block->size != (byte *)block->next)
+		}
+                if ( (byte *)block + block->size != (byte *)block->next) {
                         SoftError("ERROR: block size does not touch the next block\n");
-                if ( block->next->prev != block)
+		}
+                if ( block->next->prev != block) {
                         SoftError("ERROR: next block doesn't have proper back link\n");
-                if (!block->user && !block->next->user)
+		}
+                if (!block->user && !block->next->user) {
                         SoftError("ERROR: two consecutive free blocks\n");
+		}
         }
         SoftError("Total Size of blocks = %ld\n",totalsize);
 
@@ -551,12 +559,15 @@ void Z_DumpHeap (int lowtag, int hightag)
 
                 if (block->next == &levelzone->blocklist)
                         break;                  // all blocks have been hit
-                if ( (byte *)block + block->size != (byte *)block->next)
+                if ( (byte *)block + block->size != (byte *)block->next) {
                         SoftError("ERROR: block size does not touch the next block\n");
-                if ( block->next->prev != block)
+		}
+                if ( block->next->prev != block) {
                         SoftError("ERROR: next block doesn't have proper back link\n");
-                if (!block->user && !block->next->user)
+		}
+                if (!block->user && !block->next->user) {
                         SoftError("ERROR: two consecutive free blocks\n");
+		}
         }
         SoftError("Total Size of blocks = %ld\n",totalsize);
 
@@ -579,7 +590,7 @@ int Z_UsedHeap ( void )
         heapsize=0;
         for (block = mainzone->blocklist.next ; ; block = block->next)
         {
-                if ((block->tag>0) && (block->user>0))
+                if ((block->tag>0) && (block->user>(void **)0))
                    heapsize+=(block->size);
                 if (block->next == &mainzone->blocklist)
                    break;                  // all blocks have been hit
@@ -604,7 +615,7 @@ int Z_UsedLevelHeap ( void )
         heapsize=0;
         for (block = levelzone->blocklist.next ; ; block = block->next)
         {
-                if ((block->tag>0) && (block->user>0))
+                if ((block->tag>0) && (block->user>(void **)0))
                    heapsize+=(block->size);
                 if (block->next == &levelzone->blocklist)
                    break;                  // all blocks have been hit
@@ -630,7 +641,7 @@ int Z_UsedStaticHeap ( void )
         heapsize=0;
         for (block = mainzone->blocklist.next ; ; block = block->next)
         {
-                if ((block->tag>0) && (block->tag<PU_PURGELEVEL) && (block->user>0))
+                if ((block->tag>0) && (block->tag<PU_PURGELEVEL) && (block->user>(void **)0))
                    heapsize+=(block->size);
                 if (block->next == &mainzone->blocklist)
                    break;                  // all blocks have been hit
@@ -739,7 +750,7 @@ void Z_ChangeTag (void *ptr, int tag)
 
 int Z_AvailHeap ( void )
 {
-
+#ifdef DOS
    union REGS zregs;
    struct SREGS zsregs;
 
@@ -752,7 +763,9 @@ int Z_AvailHeap ( void )
    int386x( DPMI_INT, &zregs, &zregs, &zsregs );
 
    return ((int)MemInfo.LargestBlockAvail);
-
+#else
+	return MAXMEMORYSIZE;
+#endif
 }
 
 /*

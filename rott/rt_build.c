@@ -19,16 +19,19 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // RT_BUILD.C
 
-#include "RT_DEF.H"
+#include "rt_def.h"
 #include <string.h>
-#include <DOS.H>
 #include "watcom.h"
 #include <stdio.h>
 #include <stdlib.h>
+
+#ifdef DOS
+#include <dos.h>
 #include <conio.h>
+#endif
 
 #include "rt_build.h"
-#include "_rt_build.h"
+#include "_rt_buil.h"
 #include "rt_dr_a.h"
 #include "rt_draw.h"
 #include "rt_scale.h"
@@ -71,7 +74,7 @@ static boolean BackgroundDrawn=false;
 
 static plane_t planelist[MAXPLANES],*planeptr;
 
-static StringShade=16;
+static int StringShade=16;
 
 extern void (*USL_MeasureString)(char *, int *, int *, font_t *);
 
@@ -242,11 +245,20 @@ void   DrawPlanePosts (void)
    int i;
 
    shadingtable=colormap+(16<<8);
+
+#ifdef DOS
    for (plane=0;plane<4;plane++)
+#endif
+
       {
       VGAWRITEMAP(plane);
       buf=(byte *)(bufferofs);
+
+#ifdef DOS
       for (i=plane;i<viewwidth;i+=4,buf++)
+#else
+      for (i=0;i<viewwidth;i++,buf++)
+#endif
          {
          height=(posts[i].wallheight);
          if (height<=4)
@@ -1362,8 +1374,20 @@ void MenuBufCPrintLine (char *s)
 
 void MenuBufCPrint (char *s)
 {
+   static char buf[256];
    char  c,
          *se;
+
+    /* !!! FIXME: this is lame. */
+    if (strlen(s) >= sizeof (buf))
+    {
+        fprintf(stderr, "buffer overflow!\n");
+        return;
+    }
+
+    /* prevent writing to literal strings... ( MenubufCPrint("feh"); ) */
+    strcpy(buf, s);
+    s = buf;
 
    while (*s)
    {

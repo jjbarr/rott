@@ -29,9 +29,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 #include <stdlib.h>
 #include <stdio.h>
+
+#ifdef DOS
 #include <dos.h>
 #include <mem.h>
 #include <conio.h>
+#endif
+
 #include "rt_def.h"
 #include "task_man.h"
 #include "isr.h"
@@ -59,8 +63,12 @@ volatile int KeyboardQueue[KEYQMAX];
 volatile int Keystate[MAXKEYBOARDSCAN];
 volatile int Keyhead;
 volatile int Keytail;
+
+#ifdef DOS
 volatile int ticcount;
 volatile int fasttics;
+#endif
+
 volatile boolean PausePressed = false;
 volatile boolean PanicPressed = false;
 int KeyboardStarted=false;
@@ -88,6 +96,9 @@ int  ASCIINames[] =          // Unshifted ASCII for scan codes
 		  0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,        // 6
 		  0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0  ,0           // 7
 													 };
+
+#ifdef DOS
+
 // Local Variables
 
 static task * timertask;
@@ -734,6 +745,101 @@ void I_ShutdownKeyboard (void)
 	_dos_setvect (KEYBOARDINT, oldkeyboardisr);
 	*(short *)0x41c = *(short *)0x41a;      // clear bios key buffer
 }
+#else
+
+#include "SDL.h"
+
+static int ticoffset;    /* offset for SDL_GetTicks() */
+static int ticbase;      /* game-supplied base */
+
+int GetTicCount (void)
+{
+	return ((SDL_GetTicks() - ticoffset) * VBLCOUNTER) / 1000 + ticbase;
+}
+
+/*
+================
+=
+= ISR_SetTime
+=
+================
+*/
+void ISR_SetTime(int settime)
+{
+	ticoffset = SDL_GetTicks();
+	ticbase = settime;
+}
+
+/* developer-only */
+
+int GetFastTics (void)
+{
+	/* STUB_FUNCTION; */
+	
+	return 0;
+}
+
+void SetFastTics (int settime)
+{
+	/* STUB_FUNCTION; */
+}
+
+/*
+================
+=
+= I_Delay
+=
+================
+*/
+
+void I_Delay ( int delay )
+{
+   int time;
+
+   delay=(VBLCOUNTER*delay)/10;
+   IN_ClearKeysDown();
+   time=GetTicCount();
+   while (GetTicCount()<time+delay)
+      {
+      if (LastScan)
+         break;
+      }
+}
+
+/*
+===============
+=
+= I_StartupTimer
+=
+===============
+*/
+
+void I_StartupTimer (void)
+{
+	SDL_InitSubSystem (SDL_INIT_TIMER);
+}
+
+void I_ShutdownTimer (void)
+{
+	SDL_QuitSubSystem (SDL_INIT_TIMER);
+}
+
+/*
+===============
+=
+= I_StartupKeyboard
+=
+===============
+*/
+
+void I_StartupKeyboard (void)
+{
+	STUB_FUNCTION;
+}
 
 
-
+void I_ShutdownKeyboard (void)
+{
+	STUB_FUNCTION;
+}
+#endif

@@ -20,8 +20,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef DOS
 #include <dos.h>
 #include <conio.h>
+#endif
 
 #include "rt_def.h"
 #include "rt_vid.h"
@@ -81,6 +84,7 @@ static byte  rightmasks[4] = {1,3,7,15};
 
 void VL_MemToScreen (byte *source, int width, int height, int x, int y)
 {
+#ifdef DOS
    byte *screen, *dest, mask;
    int  plane;
 
@@ -106,6 +110,24 @@ void VL_MemToScreen (byte *source, int width, int height, int x, int y)
          dest++;
       }
    }
+#else
+	/* TODO please optimize me */
+	
+	byte *ptr, *destline;
+	int plane, i, j;
+	
+	ptr = source;
+	
+	for (plane = 0; plane < 4; plane++) {
+		for (j = 0; j < height; j++) {
+			destline = (byte *)(bufferofs+ylookup[y+j]+x);
+
+			for (i = 0; i < width; i++) {
+				*(destline + i*4 + plane) = *ptr++;
+			}			
+		}
+	}
+#endif
 }
 
 //*************************************************************************
@@ -141,12 +163,18 @@ void DrawTiledRegion
    int    HeightIndex;
    int    WidthIndex;
 
+#ifdef DOS
    start = ( byte * )( bufferofs + ( x>>2 ) + ylookup[ y ] );
+#else
+   start = ( byte * )( bufferofs +  x + ylookup[ y ] );
+#endif
 
    source       = &tile->data;
    sourcewidth  = tile->width;
    sourceheight = tile->height;
+#ifdef DOS
    offx >>= 2;
+#endif
    if ( offx >= sourcewidth )
       {
       offx %= sourcewidth;
@@ -159,14 +187,21 @@ void DrawTiledRegion
    startoffset = offy * sourcewidth;
    planesize = sourcewidth * sourceheight;
 
+#ifdef DOS
    width >>= 2;
 
    mask  = 1 << ( x & 3 );
+#endif
    plane = 4;
    while( plane > 0 )
       {
       VGAMAPMASK( mask );
+      
+#ifdef DOS
       origdest = start;
+#else
+      origdest = start+(4-plane);
+#endif
 
       sourcey     = offy;
       sourceoff   = source + startoffset;
@@ -180,7 +215,12 @@ void DrawTiledRegion
          while( WidthIndex-- )
             {
             *dest = sourceoff[ sourcex ];
+#ifdef DOS
             dest++;
+#else
+            dest += 4;
+#endif
+            
             sourcex++;
             if ( sourcex >= sourcewidth )
                {
@@ -188,7 +228,12 @@ void DrawTiledRegion
                }
             }
 
+#ifdef DOS
          origdest  += SCREENBWIDE;
+#else 
+         origdest += MAXSCREENWIDTH;
+#endif
+
          sourceoff += sourcewidth;
          sourcey++;
          if ( sourcey >= sourceheight )
@@ -200,11 +245,13 @@ void DrawTiledRegion
 
       source += planesize;
 
+#ifdef DOS
       mask <<= 1;
       if ( mask > 8 )
          {
          mask = 1;
          }
+#endif
 
       plane--;
       }
@@ -233,6 +280,7 @@ void VWB_DrawPic (int x, int y, pic_t *pic)
 
 void VL_Bar (int x, int y, int width, int height, int color)
 {
+#ifdef DOS
    byte  *dest;
    byte  leftmask,rightmask;
    int   midbytes,linedelta;
@@ -273,6 +321,15 @@ void VL_Bar (int x, int y, int width, int height, int color)
    }
 
    VGAMAPMASK(15);
+#else
+	byte *dest = (byte *)(bufferofs+ylookup[y]+x);
+	
+	while (height--) {
+		memset(dest, color, width);
+		
+		dest += linewidth;
+	}
+#endif
 }
 
 
@@ -298,6 +355,7 @@ void VWB_Bar (int x, int y, int width, int height, int color)
 
 void VL_TBar (int x, int y, int width, int height)
 {
+#ifdef DOS
    byte  *dest;
    byte  pixel;
    byte  readmask;
@@ -340,6 +398,28 @@ void VL_TBar (int x, int y, int width, int height)
 
       y++;
    }
+#else
+	int w = width;
+	
+	while (height--) {
+		byte *dest = (byte *)(bufferofs+ylookup[y]+x);
+		
+		width = w;
+		
+		while (width--) {
+			byte pixel = *dest;
+			
+			pixel = *(colormap+(27<<8)+pixel);
+			
+			*dest = pixel;
+			
+			dest++;
+		}
+		
+		y++;
+	}
+			
+#endif
 }
 
 
@@ -365,6 +445,7 @@ void VWB_TBar (int x, int y, int width, int height)
 
 void VL_Hlin (unsigned x, unsigned y, unsigned width, unsigned color)
 {
+#ifdef DOS
    unsigned xbyte;
    byte     *dest;
    byte     leftmask,
@@ -398,6 +479,11 @@ void VL_Hlin (unsigned x, unsigned y, unsigned width, unsigned color)
    *dest = color;
 
    VGAMAPMASK (15);
+#else
+	byte *dest = (byte*)(bufferofs+ylookup[y]+x);
+	
+	memset(dest, color, width);
+#endif
 }
 
 
@@ -409,6 +495,7 @@ void VL_Hlin (unsigned x, unsigned y, unsigned width, unsigned color)
 
 void VL_Vlin (int x, int y, int height, int color)
 {
+#ifdef DOS
    byte  *dest,
          mask;
 
@@ -424,6 +511,15 @@ void VL_Vlin (int x, int y, int height, int color)
    }
 
    VGAMAPMASK (15);
+#else
+	byte *dest = (byte*)(bufferofs+ylookup[y]+x);
+	
+	while (height--) {
+		*dest = color;
+		
+		dest += linewidth;
+	}
+#endif
 }
 
 
@@ -464,6 +560,7 @@ void VWB_Vlin (int y1, int y2, int x, int color)
 
 void VL_THlin (unsigned x, unsigned y, unsigned width, boolean up)
 {
+#ifdef DOS
    byte     *dest;
    byte     pixel;
    byte     readmask;
@@ -503,6 +600,23 @@ void VL_THlin (unsigned x, unsigned y, unsigned width, boolean up)
       VGAREADMAP (readmask);
       VGAMAPMASK (writemask);
    }
+#else
+	byte *dest = (byte*)(bufferofs+ylookup[y]+x);
+	
+	while (width--) {
+		byte pixel = *dest;
+
+		if (up) {
+			pixel = *(colormap+(13<<8)+pixel);
+		} else {
+			pixel = *(colormap+(27<<8)+pixel);
+		}
+		
+		*dest = pixel;
+		
+		dest++;
+	}
+#endif
 }
 
 
@@ -515,6 +629,7 @@ void VL_THlin (unsigned x, unsigned y, unsigned width, boolean up)
 
 void VL_TVlin (unsigned x, unsigned y, unsigned height, boolean up)
 {
+#ifdef DOS
    byte     *dest;
    byte     pixel;
    byte     readmask;
@@ -543,6 +658,23 @@ void VL_TVlin (unsigned x, unsigned y, unsigned height, boolean up)
 
       dest += linewidth;
    }
+#else
+	byte *dest = (byte*)(bufferofs+ylookup[y]+x);
+	
+	while (height--) {
+		byte pixel = *dest;
+
+		if (up) {
+			pixel = *(colormap+(13<<8)+pixel);
+		} else {
+			pixel = *(colormap+(27<<8)+pixel);
+		}
+		
+		*dest = pixel;
+		
+		dest += linewidth;
+	}
+#endif
 }
 
 
@@ -659,78 +791,6 @@ void VW_UpdateScreen (void)
 {
    VH_UpdateScreen ();
 }
-
-
-
-/*
-=============================================================================
-
-                  PALETTE OPS
-
-      To avoid snow, do a WaitVBL BEFORE calling these
-
-=============================================================================
-*/
-
-
-/*
-=================
-=
-= VL_FillPalette
-=
-=================
-*/
-
-void VL_FillPalette (int red, int green, int blue)
-{
-   int   i;
-
-   OUTP (PEL_WRITE_ADR,0);
-   for (i=0;i<256;i++)
-   {
-      OUTP (PEL_DATA,red);
-      OUTP (PEL_DATA,green);
-      OUTP (PEL_DATA,blue);
-   }
-}
-
-//===========================================================================
-
-/*
-=================
-=
-= VL_SetColor
-=
-=================
-*/
-
-void VL_SetColor  (int color, int red, int green, int blue)
-{
-   OUTP (PEL_WRITE_ADR,color);
-   OUTP (PEL_DATA,red);
-   OUTP (PEL_DATA,green);
-   OUTP (PEL_DATA,blue);
-}
-
-//===========================================================================
-
-/*
-=================
-=
-= VL_GetColor
-=
-=================
-*/
-
-void VL_GetColor  (int color, int *red, int *green, int *blue)
-{
-   OUTP (PEL_READ_ADR,color);
-   *red   = inp (PEL_DATA);
-   *green = inp (PEL_DATA);
-   *blue  = inp (PEL_DATA);
-}
-
-//===========================================================================
 
 //===========================================================================
 
@@ -990,14 +1050,18 @@ void VL_DecompressLBM (lbm_t *lbminfo, boolean flip)
    byte *source = (byte *)&lbminfo->data;
    byte *buf;
    int  ht = lbminfo->height;
+#ifdef DOS
    int  planes;
    byte writemask;
+#endif
    int  x = 0;
    int  y;
    byte *origbuf;
    byte pal[768];
 
+#ifdef DOS
    writemask   = 1 << (x&3);
+#endif
    orig = screen;
 
    buf = (byte *) SafeMalloc (64000);
@@ -1042,7 +1106,9 @@ void VL_DecompressLBM (lbm_t *lbminfo, boolean flip)
    	} while (count < lbminfo->width);
    }
 
+#ifdef DOS
    for (planes = 0; planes < 4; planes++)
+#endif
    {
       int cnt;
 
@@ -1051,9 +1117,18 @@ void VL_DecompressLBM (lbm_t *lbminfo, boolean flip)
       buf = origbuf;
       VGAMAPMASK (writemask);
 
-      for (y = 0; y < ((lbminfo->height*lbminfo->width)>>2); y++)
+#ifdef DOS
+      for (y = 0; y < (lbminfo->height*lbminfo->width)>>2; y++)
+#else
+      for (y = 0; y < (lbminfo->height*lbminfo->width); y++)
+#endif
       {
+#ifdef DOS
          *screen++ = *(buf+(y*4)+planes);
+#else
+         *screen++ = *(buf+y);
+#endif
+#ifdef DOS
          cnt++;
 
          if (cnt == 80)
@@ -1061,9 +1136,12 @@ void VL_DecompressLBM (lbm_t *lbminfo, boolean flip)
             screen += 16;
             cnt = 0;
          }
+#endif
       }
 
+#ifdef DOS
       writemask <<= 1;
+#endif
    }
 
    SafeFree(origbuf);
@@ -1083,9 +1161,13 @@ void VL_DecompressLBM (lbm_t *lbminfo, boolean flip)
 
 void SetBorderColor (int color)
 {
+#ifdef DOS
    inp  (STATUS_REGISTER_1);
    outp (ATR_INDEX,0x31);
    outp (ATR_INDEX,color);
+#else
+	STUB_FUNCTION;
+#endif
 }
 
 //****************************************************************************
@@ -1096,11 +1178,15 @@ void SetBorderColor (int color)
 
 void SetBorderColorInterrupt (int color)
 {
+#ifdef DOS
    union REGS regs;
 
    regs.w.ax = 0x1001;
    regs.w.bx = color<<8;
    int386(0x10,&regs,&regs);
+#else
+	STUB_FUNCTION;
+#endif
 }
 
 
@@ -1162,8 +1248,12 @@ void VL_DrawLine (int x1, int y1, int x2, int y2, byte color)
    y1<<=16;
    while (count>0)
       {
+#ifdef DOS
       VGAWRITEMAP((x1>>16)&3);
       *((byte *)bufferofs+(x1>>18)+(ylookup[y1>>16]))=color;
+#else
+      *((byte *)bufferofs+(x1>>16)+(ylookup[y1>>16]))=color;
+#endif
       x1+=xinc;
       y1+=yinc;
       count--;
@@ -1193,10 +1283,14 @@ void DrawXYPic (int x, int y, int shapenum)
    if ((y<0) || ((y+p->height)>=200))
       Error ("DrawXYPic: y is out of range\n");
 
-
+#ifdef DOS
    buffer = (byte*)bufferofs+(x>>2)+ylookup[y];
+#else
+   buffer = (byte*)bufferofs+ylookup[y];
+#endif
 
    src=(byte *)&p->data;
+
    for (plane=x;plane<x+4;plane++)
       {
       VGAWRITEMAP((plane&3));
@@ -1204,9 +1298,11 @@ void DrawXYPic (int x, int y, int shapenum)
          {
          buf=buffer+ylookup[yy];
          for (xx = 0; xx < p->width; xx++,buf++)
+#ifdef DOS
             *(buf)=*(src++);
+#else
+            *(buf+plane+xx*4)=*(src++);
+#endif
          }
       }
 }
-
-

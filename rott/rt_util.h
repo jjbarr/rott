@@ -76,8 +76,11 @@ int   atan2_appx(int,int);
 int   FindDistance(int ix, int iy);
 int   Find_3D_Distance(int ix, int iy, int iz);
 void  SetPalette ( char * pal );
-void  SetaPalette ( char * pal );
+void  SetaPalette ( byte * pal );
 void  FindEGAColors ( void );
+void  VL_FillPalette (int red, int green, int blue);
+void  VL_SetColor  (int color, int red, int green, int blue);
+void  VL_GetColor  (int color, int *red, int *green, int *blue);
 void  VL_SetPalette (byte *palette);
 void  VL_GetPalette (byte *palette);
 void  UL_printf (byte *str);
@@ -96,6 +99,25 @@ char * UL_GetPath (char * path, char *dir);
 boolean UL_ChangeDirectory (char *path);
 boolean UL_ChangeDrive (char *drive);
 void AbortCheck (char * abortstring);
+
+void FixFilePath(char *filename);
+
+
+#if PLATFORM_DOS
+    /* no op. */
+#elif PLATFORM_UNIX
+struct find_t
+{
+    DIR *dir;
+    char pattern[MAX_PATH];
+    char name[MAX_PATH];
+};
+int _dos_findfirst(char *filename, int x, struct find_t *f);
+int _dos_findnext(struct find_t *f);
+#else
+#error please define your platform.
+#endif
+
 
 #if (SOFTERROR==1)
 
@@ -126,6 +148,8 @@ void  DebugError (char *error, ...);
 #endif
 
 void Square (void);
+
+#ifdef __WATCOMC__
 #pragma aux Square=\
    "mov edx,03c4h",  \
    "mov eax,0100h",  \
@@ -137,12 +161,21 @@ void Square (void);
    "mov edx,03c4h",  \
    "out dx,ax"      \
    modify exact [eax edx]
+#endif
 
+
+#ifdef DOS
 void my_outp(int port, int data);
+#else
+#define my_outp(a,b)
+#endif
+
+#ifdef __WATCOMC__
 #pragma aux my_outp =  \
         "out dx,al",                     \
         parm    [edx] [eax] \
         modify exact []
+#endif
 
 #define OUTP                              my_outp
 

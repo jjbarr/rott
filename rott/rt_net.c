@@ -17,12 +17,16 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
-#include <dos.h>
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <io.h>
 #include <fcntl.h>
+
+#ifdef DOS
+#include <dos.h>
+#include <io.h>
+#endif
 
 #include "rt_def.h"
 #include "rt_main.h"
@@ -109,14 +113,24 @@ static int     LastCommandTime[MAXPLAYERS];
 static CommandStatusType * CommandState[MAXPLAYERS+1];
 
 static boolean InProcessServer=false;
-static lastcontrolupdatetime;
-static largesttime;
-static PlayerStatus[MAXPLAYERS];
+static int lastcontrolupdatetime;
+static int largesttime;
+static int PlayerStatus[MAXPLAYERS];
 //static int syncservertime;
 //static boolean FixingPackets;
 static int controldivisor=1;
 static int nextupdatetime;
 static boolean UpdateServer=true;
+
+void CheckForPacket ( void );
+void PrepareLocalPacket ( void );
+void SendSyncCheckPacket ( void );
+void AddModemSubPacket(void * incoming);
+void SetPlayerDescription( void * pkt );
+void UpdateDemoPlayback (int time);
+int GetTypeSize (int type);
+int MaxSpeedForCharacter(playertype *pstate);
+
 /*
 =============================================================================
 
@@ -499,7 +513,7 @@ void StartupClientControls ( void )
       controlupdatetime=20;
       }
    else
-      controlupdatetime=ticcount;
+      controlupdatetime=GetTicCount();
 
    controlupdatetime-=(controlupdatetime%controldivisor);
 
@@ -562,19 +576,19 @@ void StartupClientControls ( void )
 
 
 #if (DEVELOPMENT == 1)
-//   ComError("StartupClientControls: ticcount=%ld oldtime=%ld controlupdatetime=%ld\n",ticcount,oldtime,controlupdatetime);
+//   ComError("StartupClientControls: GetTicCount()=%ld oldtime=%ld controlupdatetime=%ld\n",GetTicCount(),oldtime,controlupdatetime);
 #endif
 
    if ((demoplayback==false) && (standalone==false))
       {
       if (modemgame==true)
          {
-         while (ticcount<(controlupdatetime-10))
+         while (GetTicCount()<(controlupdatetime-10))
             {
             CalcTics();
             }
          }
-      lastcontrolupdatetime=ticcount;
+      lastcontrolupdatetime=GetTicCount();
       largesttime=0;
       PollControls();
       }
@@ -608,7 +622,7 @@ void UpdateClientControls ( void )
 
 #if 0
 
-   delta=ticcount-lastcontrolupdatetime;
+   delta=GetTicCount()-lastcontrolupdatetime;
    if (delta>largesttime)
       {
       if (delta>10)
@@ -617,11 +631,11 @@ void UpdateClientControls ( void )
       }
 
 #endif
-   lastcontrolupdatetime=ticcount;
+   lastcontrolupdatetime=GetTicCount();
 
    if (standalone==false)
       {
-      time=ticcount;
+      time=GetTicCount();
 
       // if we are a fixing the current packet stop update of deltas
       // in non-network games.
@@ -981,7 +995,7 @@ void PrepareLocalPacket ( void )
       SendPacket (pkt, server);
 
 #if (DEVELOPMENT == 1)
-//   ComError("packet sent: realtime=%ld time=%ld type=%ld dest=%ld\n",ticcount,pkt->time,pkt->type,server);
+//   ComError("packet sent: realtime=%ld time=%ld type=%ld dest=%ld\n",GetTicCount(),pkt->time,pkt->type,server);
 #endif
 
    controlupdatetime+=controldivisor;
@@ -1111,7 +1125,7 @@ int GetServerPacketSize (void * pkt)
          {
          ptr+=GetPacketSize(ptr);
          }
-      return (ptr-pkt);
+      return ((byte *)ptr-(byte *)pkt);
       }
    else
       return GetPacketSize(pkt);
@@ -1348,7 +1362,7 @@ void ResendPacket (void * pkt, int dest)
    time=request->time;
 
    ComError( "RESEND request received at %ld\n packet time=%ld dest=%ld numpackets=%ld\n",
-             ticcount, time, dest, request->numpackets);
+             GetTicCount(), time, dest, request->numpackets);
 
    if (IsServer==true)
       {
@@ -1381,7 +1395,7 @@ void FixupPacket (void * pkt, int src)
 
    fix=(COM_FixupType *)pkt;
 
-   ComError( "Fixup received at %ld, time=%ld numpackets=%ld\n", ticcount, fix->time, fix->numpackets);
+   ComError( "Fixup received at %ld, time=%ld numpackets=%ld\n", GetTicCount(), fix->time, fix->numpackets);
 #if 0
    if (networkgame==false)
       FixingPackets=false;
@@ -1601,7 +1615,7 @@ void SendSyncTimePacket ( void )
          {
          if ((PlayerStatus[i]!=player_ingame) || ( (i==consoleplayer) && (standalone==false) ) )
             continue;
-         sync.synctime=ticcount+GetTransitTime(i);
+         sync.synctime=GetTicCount()+GetTransitTime(i);
          WritePacket ( &sync.type, GetPacketSize(&sync.type), i);
          }
       }
@@ -1609,7 +1623,7 @@ void SendSyncTimePacket ( void )
       {
       if (PlayerStatus[server]==player_ingame)
          {
-         sync.synctime=ticcount+GetTransitTime(server);
+         sync.synctime=GetTicCount()+GetTransitTime(server);
          WritePacket ( &sync.type, GetPacketSize(&sync.type), server);
          }
       }
@@ -1673,27 +1687,27 @@ void SyncToServer( void )
       return;
 //   if (networkgame==true)
 //      {
-//      diff = (ticcount-controldivisor-LastCommandTime[0])/controldivisor;
+//      diff = (GetTicCount()-controldivisor-LastCommandTime[0])/controldivisor;
 //      SoftError("diff=%ld\n",diff);
 //      if (abs(diff)>1)
-//         ISR_SetTime(ticcount-diff);
+//         ISR_SetTime(GetTicCount()-diff);
 #if 0
       diff = controlupdatetime-LastCommandTime[0];
       if (diff>3)
          {
-         ISR_SetTime(ticcount-1);
+         ISR_SetTime(GetTicCount()-1);
          }
       else if (diff<-3)
          {
-         ISR_SetTime(ticcount+1);
+         ISR_SetTime(GetTicCount()+1);
          }
 #endif
 //      }
 //   else
 //      {
-      diff = (ticcount-controldivisor-LastCommandTime[server])/controldivisor;
+      diff = (GetTicCount()-controldivisor-LastCommandTime[server])/controldivisor;
       if (abs(diff)>0)
-         ISR_SetTime(ticcount-diff);
+         ISR_SetTime(GetTicCount()-diff);
 //      }
 }
 
@@ -2026,7 +2040,7 @@ void RequestPacket (int time, int dest, int numpackets)
    WritePacket (&request, GetPacketSize(&request), dest);
 
 #if (DEVELOPMENT == 1)
-//   ComError( "BADPKT, request sent at %ld lgt=%ld dest=%ld\n",ticcount,time,dest);
+//   ComError( "BADPKT, request sent at %ld lgt=%ld dest=%ld\n",GetTicCount(),time,dest);
 #endif
 }
 
@@ -2196,18 +2210,18 @@ void ProcessServer ( void )
 
    InProcessServer=true;
 
-   if (ticcount<serverupdatetime)
+   if (GetTicCount()<serverupdatetime)
       goto exitProcessServer;
 
-   time=ticcount;
-   quittime=ticcount+SERVERTIMEOUT;
+   time=GetTicCount();
+   quittime=GetTicCount()+SERVERTIMEOUT;
    exit=false;
 
    while (time>=serverupdatetime)
       {
       int savetime;
 
-      savetime=ticcount+NETWORKTIMEOUT;
+      savetime=GetTicCount()+NETWORKTIMEOUT;
       done = false;
 		while (done == false)
          {
@@ -2226,7 +2240,7 @@ void ProcessServer ( void )
 
          if (restartgame==true)
             break;
-         if (ticcount>savetime)
+         if (GetTicCount()>savetime)
             {
             for (i=0;i<numplayers;i++)
                {
@@ -2239,9 +2253,9 @@ void ProcessServer ( void )
                   RequestPacket(serverupdatetime, i , controldivisor);
                   }
                }
-            savetime=ticcount+NETWORKTIMEOUT;
+            savetime=GetTicCount()+NETWORKTIMEOUT;
             }
-//         if (ticcount>quittime)
+//         if (GetTicCount()>quittime)
 //            {
 //            Error("Server aborting after %ld seconds\n",SERVERTIMEOUT/VBLCOUNTER);
 //            }
@@ -2294,22 +2308,22 @@ int SetupCheckForPacket ( void )
                break;
             case COM_GAMEDESC:
                if (standalone==true)
-                  printf("Received GameDescription from player#%ld\n",rottcom->remotenode);
+                  printf("Received GameDescription from player#%ld\n",(long int)rottcom->remotenode);
                WritePacket(&ROTTpacket[0],GetPacketSize(pkt),0); // Send to player 0
                break;
             case COM_GAMEACK:
                if (standalone==true)
-                  printf("Received GameAcknowledgement from player#%ld\n",rottcom->remotenode);
+                  printf("Received GameAcknowledgement from player#%ld\n",(long int)rottcom->remotenode);
                WritePacket(&ROTTpacket[0],GetPacketSize(pkt),0); // Send to player 0
                break;
             case COM_GAMEMASTER:
                if (standalone==true)
-                  printf("Received GameMasterPacket from player#%ld\n",rottcom->remotenode);
+                  printf("Received GameMasterPacket from player#%ld\n",(long int)rottcom->remotenode);
                BroadcastServerPacket(&ROTTpacket[0],GetPacketSize(pkt)); // Send to all
                break;
             case COM_GAMEPLAY:
                if (standalone==true)
-                  printf("Received StartGamePacket from player#%ld\n",rottcom->remotenode);
+                  printf("Received StartGamePacket from player#%ld\n",(long int)rottcom->remotenode);
                BroadcastServerPacket(&ROTTpacket[0],GetPacketSize(pkt)); // Send to all
                retval=scfp_done;
                break;
@@ -2536,9 +2550,9 @@ void ControlPlayerObj (objtype * ob)
       if (num==numplayers-1)
          nextupdatetime=oldpolltime+controldivisor;
       if (networkgame==true)
-         savetime=ticcount+NETWORKTIMEOUT;
+         savetime=GetTicCount()+NETWORKTIMEOUT;
       else
-         savetime=ticcount+MODEMTIMEOUT;
+         savetime=GetTicCount()+MODEMTIMEOUT;
 
       if (PlayerStatus[num]!=player_ingame)
          return;
@@ -2553,8 +2567,9 @@ void ControlPlayerObj (objtype * ob)
          if (ServerCommandStatus(oldpolltime)==cs_ready)
             {
             ProcessPlayerCommand (num);
-            if (demoplayback||demorecord)
+            if (demoplayback||demorecord) {
                SoftError("x=%4lx y=%4lx a=%4lx time=%5ld\n",player->x,player->y,player->angle,oldpolltime);
+	    }
             break;
             }
    //      else if ((ServerCommandStatus(oldpolltime)==cs_fixing) &&
@@ -2570,15 +2585,15 @@ void ControlPlayerObj (objtype * ob)
             UpdateClientControls();
             }
 
-         if (ticcount>savetime)
+         if (GetTicCount()>savetime)
             {
             SoftError("Client timeout oldpolltime=%ld\n",oldpolltime);
             if (IsServer==false)
                RequestPacket(oldpolltime, server, controldivisor);
             if (networkgame==true)
-               savetime=ticcount+NETWORKTIMEOUT;
+               savetime=GetTicCount()+NETWORKTIMEOUT;
             else
-               savetime=ticcount+MODEMTIMEOUT;
+               savetime=GetTicCount()+MODEMTIMEOUT;
             }
          }
       }
@@ -2670,8 +2685,9 @@ void UpdatePlayerObj ( int player )
 	pstate->angle <<= 11;
    pstate->topspeed=MaxSpeedForCharacter(pstate);
 
-   if (demoplayback||demorecord)
+   if (demoplayback||demorecord) {
       SoftError("  dmx=%4lx dmy=%4lx da=%4lx time=%5ld\n",pstate->dmomx,pstate->dmomy,pstate->angle>>11,oldpolltime);
+   }
 #if 0
 #if (DEVELOPMENT == 1)
          if ((modemgame==true) || (demoplayback==true) || (demorecord==true))
@@ -2916,7 +2932,7 @@ void SetupGamePlayer ( void )
    boolean done;
    boolean gameready;
 
-   savetime=ticcount;
+   savetime=GetTicCount();
 
    done=false;
    gameready=false;
@@ -2927,9 +2943,9 @@ void SetupGamePlayer ( void )
       AbortCheck("SetupGamePlayer aborted\n");
 
       // send Player Description
-		if (ticcount >= savetime)
+		if (GetTicCount() >= savetime)
          {
-         savetime=ticcount+SETUPTIME;
+         savetime=GetTicCount()+SETUPTIME;
          if (gameready==false)
             SendPlayerDescription();
          else
@@ -2945,9 +2961,9 @@ void SetupGamePlayer ( void )
             break;
          }
       }
-   savetime=ticcount+(VBLCOUNTER/2);
+   savetime=GetTicCount()+(VBLCOUNTER/2);
 
-   while (ticcount<savetime)
+   while (GetTicCount()<savetime)
       {
       SetupCheckForPacket ();
       }
@@ -3001,7 +3017,7 @@ void SetupGameMaster ( void )
    memset(PlayersReady,false,sizeof(PlayersReady));
 	PlayersReady[consoleplayer]=true;
 
-   savetime=ticcount;
+   savetime=GetTicCount();
 
    done=false;
 
@@ -3014,9 +3030,9 @@ void SetupGameMaster ( void )
       AbortCheck("SetupGameMaster aborted\n");
 
       // send Game Description
-		if (ticcount >= savetime)
+		if (GetTicCount() >= savetime)
          {
-         savetime=ticcount+SETUPTIME;
+         savetime=GetTicCount()+SETUPTIME;
 			if (GotAllPlayerDescriptions()==true)
             SendGameDescription();
          }
@@ -3028,9 +3044,9 @@ void SetupGameMaster ( void )
          }
       SetupCheckForPacket();
       }
-   savetime=ticcount+(VBLCOUNTER/2);
+   savetime=GetTicCount()+(VBLCOUNTER/2);
 
-   while (ticcount<savetime)
+   while (GetTicCount()<savetime)
       {
       SetupCheckForPacket ();
       }
@@ -3113,7 +3129,7 @@ void LoadDemo (int demonumber)
    GetDemoFilename (demonumber, demo);
    if (demobuffer!=NULL)
       FreeDemo();
-   size = LoadFile (demo, &demobuffer);
+   size = LoadFile (demo, (void **)&demobuffer);
    playstate = ex_demoplayback;
    demoptr = demobuffer;
    lastdemoptr = (demoptr+size);

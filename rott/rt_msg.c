@@ -33,7 +33,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "rt_main.h"
 #include "rt_net.h"
 #include "rt_com.h"
+
+#ifdef DOS
 #include <mem.h>
+#endif
+
 #include <stdlib.h>
 //MED
 #include "memcheck.h"
@@ -91,7 +95,7 @@ int StringLength (char *string)
 
 void ResetMessageTime ( void )
 {
-   LastMessageTime=ticcount;
+   LastMessageTime=GetTicCount();
 }
 
 /*
@@ -425,8 +429,8 @@ void UpdateMessages
    int messagetics;
    int i;
 
-   messagetics = ticcount - LastMessageTime;
-   LastMessageTime = ticcount;
+   messagetics = GetTicCount() - LastMessageTime;
+   LastMessageTime = GetTicCount();
 
    if ( GamePaused == true )
       {

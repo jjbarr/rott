@@ -18,9 +18,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 #include "rt_def.h"
-#include <conio.h>
 #include <string.h>
+
+#ifdef DOS
+#include <conio.h>
 #include <dos.h>
+#endif
+
 #include "sprites.h"
 #include "rt_map.h"
 #include "rt_dr_a.h"
@@ -81,6 +85,8 @@ static Ptype arrows[8][7]=
          { {2,4}, {0,2}, {1,2}, {1,0}, {3,0}, {3,2}, {4,2} },
          { {4,4}, {1,4}, {2,3}, {0,1}, {1,0}, {3,2}, {4,1} },
      };
+
+void DrawMap_MaskedShape (int x, int y, int lump, int type);
 
 void CheatMap( void )
 {
@@ -153,17 +159,39 @@ void DrawMap_Wall (int x, int y, int tile)
 
    x*=tilesize;
    y*=tilesize;
+   
+#ifdef DOS
    buf=(byte *)bufferofs+ylookup[y]+(x>>2);
+#else
+   buf=(byte *)bufferofs+ylookup[y]+x;
+#endif
+
    source=W_CacheLumpNum(tile,PU_CACHE);
+
+#ifdef DOS
    for (p=0;p<4;p++)
+#endif
       {
+#ifdef DOS
       VGAWRITEMAP(p);
       s=source+((p*hp_srcstep)>>10);
+#else
+      s=source;
+#endif
       b=buf;
+
+#ifdef DOS
       for (i=p;i<tilesize;i+=4,b++)
+#else
+      for (i=0;i<tilesize;i++,b++)
+#endif
          {
          DrawMapPost(tilesize,s,b);
+#ifdef DOS
          s+=(hp_srcstep>>8);
+#else
+         s+=(hp_srcstep>>10);
+#endif
          }
       }
 }
@@ -199,16 +227,37 @@ void DrawMap_SkyTile (int x, int y)
 
    x*=tilesize;
    y*=tilesize;
+
+#ifdef DOS
    buf=(byte *)bufferofs+ylookup[y]+(x>>2);
+#else
+   buf=(byte *)bufferofs+ylookup[y]+x;
+#endif
+
+#ifdef DOS
    for (p=0;p<4;p++)
+#endif
       {
+#ifdef DOS
       VGAWRITEMAP(p);
       s=skytile+((p*hp_srcstep)>>10);
+#else
+      s=skytile;
+#endif
+
       b=buf;
+#ifdef DOS
       for (i=p;i<tilesize;i+=4,b++)
+#else
+      for (i=0;i<tilesize;i++,b++)
+#endif
          {
          DrawMapPost(tilesize,s,b);
+#ifdef DOS
          s+=(hp_srcstep>>8);
+#else
+         s+=(hp_srcstep>>10);
+#endif
          }
       }
 }
@@ -555,9 +604,14 @@ void SetupFullMap( void )
 
    // Clear area for map
 
+#ifdef DOS
    VGAMAPMASK(15);
    for (ty=37;ty<37+127;ty++)
       memset((byte *)bufferofs+ylookup[ty]+24,0,32);
+#else
+   for (ty=37;ty<37+127;ty++)
+      memset((byte *)bufferofs+ylookup[ty]+24,0,32*4);
+#endif
 }
 
 /*
@@ -582,8 +636,13 @@ void DrawFullMap( void )
 
    for (mapx=0;mapx<mapwidth;mapx++)
       {
+#ifdef DOS
       VGAWRITEMAP(mapx&3);
       buf=(byte *)bufferofs+ylookup[37]+((96+mapx)>>2);
+#else      
+      buf=(byte *)bufferofs+ylookup[37]+((96+mapx));
+#endif
+
       for (mapy=0;mapy<mapheight;mapy++,buf+=SCREENBWIDE)
          {
          if ((mapx==player->tilex ) && (mapy==player->tiley))

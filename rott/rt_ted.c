@@ -21,12 +21,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "rt_def.h"
 #include "rt_sound.h"
-#include <io.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+#ifdef DOS
+#include <io.h>
 #include <conio.h>
 #include <dos.h>
+#else
+#include <errno.h>
+#endif
+
 #include "states.h"
 #include "watcom.h"
 #include "rt_ted.h"
@@ -158,6 +164,14 @@ static char CacheStrings[MAXSILLYSTRINGS][80]=
 void SetupGameLevel (void);
 void ScanInfoPlane(void);
 
+void DrawPreCache( void );
+void InitializePlayerstates(void);
+void SetupSnakePath(void);
+void SetupRandomActors(void);
+void SetupActors(void);
+void SetupStatics(void);
+void LoftSprites( void );
+int GetLumpForTile(int tile);
 
 //========================================
 
@@ -950,6 +964,7 @@ void MiscPreCache( void )
 
 boolean IsChristmas(void)
    {
+#ifdef DOS
    struct dosdate_t date;
 
    _dos_getdate(&date);
@@ -958,6 +973,9 @@ boolean IsChristmas(void)
        (date.month == 12)
       )
       return true;
+#else
+	STUB_FUNCTION;
+#endif
 
    return false;
 
@@ -974,6 +992,7 @@ boolean IsChristmas(void)
 
 void CheckHolidays(void)
    {
+#ifdef DOS
    struct dosdate_t date;
 
    _dos_getdate(&date);
@@ -1001,7 +1020,9 @@ void CheckHolidays(void)
             DrawNormalSprite(0,0,W_GetNumForName("esterhat"));
          }
       }
-
+#else
+	STUB_FUNCTION;
+#endif
    }
 
 
@@ -5750,9 +5771,11 @@ void SetupGameLevel (void)
 		SetupLights();
       SetupInanimateActors();
       }
-   else
+   else {
+      SetupPlayers(); // force initialization of player obj - SBF
       FixTiles();
-
+   }
+   
 	if (gamestate.SpawnEluder || gamestate.SpawnDeluder)
       {
 //MED

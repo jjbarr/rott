@@ -20,12 +20,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // W_wad.c
 
 #include <stdio.h>
-#include <conio.h>
 #include <string.h>
 #include <malloc.h>
-#include <io.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+
+#ifdef DOS
+#include <conio.h>
+#include <io.h>
+#endif
+
 #include "rt_def.h"
 #include "rt_util.h"
 #include "_w_wad.h"
@@ -37,6 +41,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "rt_crc.h"
 #include "rt_main.h"
 
+long filelength(int handle);
 
 //=============
 // GLOBALS
@@ -55,40 +60,6 @@ static lumpinfo_t      *lumpinfo;              // location of each lump on disk
 #if (DATACORRUPTIONTEST == 1)
 static byte *lumpcheck;
 #endif
-
-
-//===================
-
-#ifdef NeXT
-
-#define strcmpi strcasecmp
-
-void strupr (char *s)
-{
-    while (*s)
-        *s++ = toupper(*s);
-}
-
-/*
-================
-=
-= filelength
-=
-================
-*/
-
-int filelength (int handle)
-{
-    struct stat fileinfo;
-
-    if (fstat (handle,&fileinfo) == -1)
-        Error ("Error fstating");
-
-    return fileinfo.st_size;
-}
-
-#endif
-
 
 /*
 ============================================================================
@@ -110,7 +81,7 @@ int filelength (int handle)
 ====================
 */
 
-void W_AddFile (char *filename)
+void W_AddFile (char *_filename)
 {
         wadinfo_t               header;
         lumpinfo_t              *lump_p;
@@ -119,6 +90,10 @@ void W_AddFile (char *filename)
         int                             startlump;
         filelump_t              *fileinfo, singleinfo;
 
+        char filename[MAX_PATH];
+        strncpy(filename, _filename, sizeof (filename));
+        filename[sizeof (filename) - 1] = '\0';
+        FixFilePath(filename);
 //
 // read the entire file in
 //      FIXME: shared opens
@@ -162,13 +137,13 @@ void W_AddFile (char *filename)
 //
 // Fill in lumpinfo
 //
-        Z_Realloc(&lumpinfo,numlumps*sizeof(lumpinfo_t));
+        Z_Realloc((void **)&lumpinfo,numlumps*sizeof(lumpinfo_t));
 //        lumpinfo = realloc (lumpinfo, numlumps*sizeof(lumpinfo_t));
 //        if (!lumpinfo)
 //           Error("W_AddFile: Could not realloc %ld bytes",numlumps*sizeof(lumpinfo_t));
         lump_p = &lumpinfo[startlump];
 
-        for (i=startlump ; i<numlumps ; i++,lump_p++, fileinfo++)
+        for (i=startlump ; i<(unsigned int)numlumps ; i++,lump_p++, fileinfo++)
         {
                 lump_p->handle = handle;
                 lump_p->position = LONG(fileinfo->filepos);
@@ -191,7 +166,11 @@ void W_CheckWADIntegrity ( void )
 {
    int crc;
 
+// CRC disabled because it's not very useful these days
+
+#ifdef DOS
    crc = CalculateCRC ((byte *)lumpinfo, numlumps*sizeof(lumpinfo_t) );
+
    if (crc != WADCHECKSUM)
       {
       printf("==============================================================================\n");
@@ -203,6 +182,7 @@ void W_CheckWADIntegrity ( void )
 //      printf("crc=%ld\n",crc);
       getch();
       }
+#endif
 }
 
 
@@ -248,7 +228,7 @@ void W_InitMultipleFiles (char **filenames)
            Error("W_InitFiles: lumpcache malloc failed size=%ld\n",numlumps<<2);
 
         if (!quiet)
-           printf("W_Wad: Wad Manager Started NUMLUMPS=%ld\n",numlumps);
+           printf("W_Wad: Wad Manager Started NUMLUMPS=%ld\n",(long int)numlumps);
 #if (DATACORRUPTIONTEST == 1)
         lumpcheck=SafeMalloc(numlumps);
         memset(lumpcheck,255,numlumps);
@@ -464,7 +444,7 @@ void W_WriteLump (int lump, void *src)
 */
 void    *W_CacheLumpNum (int lump, int tag)
 {
-        if ((unsigned)lump >= numlumps)
+        if (lump >= (int)numlumps)
                 Error ("W_CacheLumpNum: %i >= numlumps",lump);
 
         else if (lump < 0)

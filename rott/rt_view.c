@@ -32,7 +32,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "rt_sound.h"
 #include "modexlib.h"
 #include "rt_menu.h"
+
+#ifdef DOS
 #include <mem.h>
+#endif
+
 #include <stdlib.h>
 
 #include "rt_main.h"
@@ -148,6 +152,9 @@ static int      lightningdistance=0;
 static int      lightningsoundtime=0;
 static boolean  periodic=false;
 static int      periodictime=0;
+
+void SetViewDelta ( void );
+void UpdatePeriodicLighting (void);
 
 /*
 ====================
@@ -344,7 +351,11 @@ void SetViewSize
       }
 
    // Calculate offset of view window
+#ifdef DOS
    screenofs = ( screenx >> 2 ) + ylookup[ screeny ];
+#else
+   screenofs = screenx + ylookup[ screeny ];
+#endif
 
 //
 // calculate trace angles and projection constants

@@ -107,7 +107,11 @@ void VW_DrawClippedString (int x, int y, char *string)
                if ((y>=0) && (y<MAXSCREENHEIGHT))
                   {
                   if (*source>0)
+#ifdef DOS
                      *((byte *)(bufferofs+ylookup[y]+(x>>2))) = *source;
+#else
+                     *((byte *)(bufferofs+ylookup[y]+x)) = *source;
+#endif
                   }
                source++;
                y++;
@@ -161,6 +165,7 @@ void US_ClippedPrint (int x, int y, char *s)
 
 void VW_DrawPropString (char *string)
 {
+#ifdef DOS
    byte  pix;
    int   width,step,height,ht;
    byte  *source, *dest, *origdest;
@@ -206,7 +211,41 @@ void VW_DrawPropString (char *string)
    }
    bufferheight = ht;
    bufferwidth = ((dest+1)-origdest)*4;
+#else
+   byte  pix;
+   int   width,step,height,ht;
+   byte  *source, *dest, *origdest;
+   int   ch,mask;
 
+   ht = CurrentFont->height;
+   dest = origdest = (byte *)(bufferofs+ylookup[py]+px);
+
+   while ((ch = *string++)!=0)
+   {
+      ch -= 31;
+      width = step = CurrentFont->width[ch];
+      source = ((byte *)CurrentFont)+CurrentFont->charofs[ch];
+      while (width--)
+      {
+         height = ht;
+         while (height--)
+         {
+            pix = *source;
+            if (pix)
+               *dest = pix;
+
+            source++;
+            dest += linewidth;
+         }
+
+         px++;
+	 origdest++;
+         dest = origdest;
+      }
+   }
+   bufferheight = ht;
+   bufferwidth = ((dest+1)-origdest);
+#endif
 }
 
 
@@ -246,7 +285,11 @@ void VW_DrawIPropString (char *string)
 
 
    ht = CurrentFont->height;
+#ifdef DOS
    dest = origdest = (byte *)(bufferofs+ylookup[py]+(px>>2));
+#else
+   dest = origdest = (byte *)(bufferofs+ylookup[py]+px);
+#endif
 
 
    mask = 1<<(px&3);
@@ -273,17 +316,25 @@ void VW_DrawIPropString (char *string)
          }
 
          px++;
+#ifdef DOS
          mask <<= 1;
          if (mask == 16)
          {
             mask = 1;
             origdest++;
          }
+#else
+	 origdest++;
+#endif
          dest = origdest;
       }
    }
    bufferheight = ht;
+#ifdef DOS
    bufferwidth = ((dest+1)-origdest)*4;
+#else
+   bufferwidth = ((dest+1)-origdest);
+#endif
 
 }
 
@@ -735,7 +786,7 @@ boolean US_LineInput (int x, int y, char *buf, char *def, boolean escok,
    cursormoved = redraw = true;
    cursorvis   = done   = false;
 
-   lasttime  = ticcount;
+   lasttime  = GetTicCount();
 
 
    lastkey = getASCII ();
@@ -744,6 +795,8 @@ boolean US_LineInput (int x, int y, char *buf, char *def, boolean escok,
    {
 //      if (GameEscaped==true)
 //         PauseLoop ();
+
+      IN_PumpEvents();
 
       if (cursorvis)
          USL_XORICursor (x, y, s, cursor, color);
@@ -795,7 +848,7 @@ boolean US_LineInput (int x, int y, char *buf, char *def, boolean escok,
 
       case sc_End:
 
-         if ( cursor != strlen (s) )
+         if ( cursor != (int)strlen (s) )
             {
             cursor = strlen (s);
             cursormoved = true;
@@ -889,7 +942,7 @@ boolean US_LineInput (int x, int y, char *buf, char *def, boolean escok,
 
             ls = Keyboard[sc_LShift];
             rs = Keyboard[sc_RShift];
-            memset (Keyboard, 0, 127*sizeof(int));       // Clear printable keys
+            memset ((void*)Keyboard, 0, 127*sizeof(int));       // Clear printable keys
             Keyboard[sc_LShift] = ls;
             Keyboard[sc_RShift] = rs;
 
@@ -924,13 +977,13 @@ boolean US_LineInput (int x, int y, char *buf, char *def, boolean escok,
       if (cursormoved)
       {
          cursorvis = false;
-         lasttime = ticcount - VBLCOUNTER;
+         lasttime = GetTicCount() - VBLCOUNTER;
 
          cursormoved = false;
       }
-      if (ticcount - lasttime > VBLCOUNTER / 2)
+      if (GetTicCount() - lasttime > VBLCOUNTER / 2)
       {
-         lasttime = ticcount;
+         lasttime = GetTicCount();
 
          cursorvis ^= true;
       }
@@ -1027,7 +1080,7 @@ boolean US_lineinput (int x, int y, char *buf, char *def, boolean escok,
    cursormoved = redraw = true;
    cursorvis   = done   = false;
 
-   lasttime  = ticcount;
+   lasttime  = GetTicCount();
 
 
    lastkey = getASCII ();
@@ -1087,7 +1140,7 @@ boolean US_lineinput (int x, int y, char *buf, char *def, boolean escok,
 
       case sc_End:
 
-         if ( cursor != strlen( s ) )
+         if ( cursor != (int)strlen( s ) )
             {
             cursor = strlen (s);
             cursormoved = true;
@@ -1183,7 +1236,7 @@ boolean US_lineinput (int x, int y, char *buf, char *def, boolean escok,
 
             ls = Keyboard[sc_LShift];
             rs = Keyboard[sc_RShift];
-            memset (Keyboard, 0, 127*sizeof(int));       // Clear printable keys
+            memset ((void*)Keyboard, 0, 127*sizeof(int));       // Clear printable keys
             Keyboard[sc_LShift] = ls;
             Keyboard[sc_RShift] = rs;
             MN_PlayMenuSnd (SD_MOVECURSORSND);
@@ -1217,13 +1270,13 @@ boolean US_lineinput (int x, int y, char *buf, char *def, boolean escok,
       if (cursormoved)
       {
          cursorvis = false;
-         lasttime = ticcount - VBLCOUNTER;
+         lasttime = GetTicCount() - VBLCOUNTER;
 
          cursormoved = false;
       }
-      if (ticcount - lasttime > VBLCOUNTER / 2)
+      if (GetTicCount() - lasttime > VBLCOUNTER / 2)
       {
-         lasttime = ticcount;
+         lasttime = GetTicCount();
 
          cursorvis ^= true;
       }
@@ -1437,12 +1490,16 @@ void DrawIntensityChar
 
    ht = IFont->height;
 
+#ifdef DOS
    origdest = ( byte * )( bufferofs + ylookup[ py ] + ( px >> 2 ) );
+#else
+   origdest = ( byte * )( bufferofs + ylookup[ py ] + px );
+#endif
    dest = origdest;
 
    ch -= 31;
-   width = IFont->width[ ch ];
-   source = ( ( byte * )IFont ) + IFont->charofs[ ch ];
+   width = IFont->width[ (unsigned int)ch ];
+   source = ( ( byte * )IFont ) + IFont->charofs[ (unsigned int)ch ];
 
    mask = 1 << ( px & 3 );
 
@@ -1464,12 +1521,16 @@ void DrawIntensityChar
          }
 
       px++;
+#ifdef DOS
       mask <<= 1;
       if ( mask == 16 )
          {
          mask = 1;
          origdest++;
          }
+#else
+      origdest++;
+#endif
       dest = origdest;
       }
    }

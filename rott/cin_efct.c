@@ -28,7 +28,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "w_wad.h"
 #include "z_zone.h"
 #include <string.h>
+
+#ifdef DOS
 #include <conio.h>
+#endif
 
 #include "modexlib.h"
 #include "fli_glob.h"
@@ -37,6 +40,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 static int cin_sprtopoffset;
 static int cin_invscale;
+
+void DrawFadeout ( void );
+void DrawBlankScreen ( void );
+void DrawClearBuffer ( void );
 
 /*
 ===============
@@ -353,14 +360,22 @@ void DrawCinematicBackground ( backevent * back )
    if (height!=MAXSCREENHEIGHT)
       DrawClearBuffer ();
 
+   plane = 0;
+   
+#ifdef DOS
    for (plane=0;plane<4;plane++)
+#endif
       {
       buf=(byte *)bufferofs+ylookup[back->yoffset];
       offset=(back->currentoffset>>FRACTIONBITS)+plane;
 
       VGAWRITEMAP(plane);
 
+#ifdef DOS
       for (i=plane;i<MAXSCREENWIDTH;i+=4,offset+=4,buf++)
+#else
+      for (i=0;i<MAXSCREENWIDTH;i++,offset++,buf++)
+#endif
          {
          if (offset>=back->backdropwidth)
             src=&(pic->data) + ( (offset - back->backdropwidth) * (pic->height) );
@@ -397,14 +412,22 @@ void DrawCinematicMultiBackground ( backevent * back )
    if (height!=MAXSCREENHEIGHT)
       DrawClearBuffer ();
 
+   plane = 0;
+   
+#ifdef DOS
    for (plane=0;plane<4;plane++)
+#endif
       {
       buf=(byte *)bufferofs+ylookup[back->yoffset];
       offset=(back->currentoffset>>FRACTIONBITS)+plane;
 
       VGAWRITEMAP(plane);
 
+#ifdef DOS
       for (i=plane;i<MAXSCREENWIDTH;i+=4,offset+=4,buf++)
+#else
+      for (i=0;i<MAXSCREENWIDTH;i++,offset++,buf++)
+#endif
          {
          if (offset>=back->backdropwidth)
             src=back->data + ( (offset - back->backdropwidth) * (back->height) );
@@ -443,14 +466,22 @@ void DrawCinematicBackdrop ( backevent * back )
 
    toppost=-p->topoffset+back->yoffset;
 
+   plane = 0;
+   
+#ifdef DOS
    for (plane=0;plane<4;plane++)
+#endif
       {
       buf=(byte *)bufferofs;
       offset=(back->currentoffset>>FRACTIONBITS)+plane;
 
       VGAWRITEMAP(plane);
 
+#ifdef DOS
       for (i=plane;i<MAXSCREENWIDTH;i+=4,offset+=4,buf++)
+#else
+      for (i=0;i<MAXSCREENWIDTH;i++,offset++,buf++)
+#endif
          {
          if (offset>=back->backdropwidth)
             src = shape + p->collumnofs[offset - back->backdropwidth];
@@ -544,7 +575,11 @@ void DrawCinematicSprite ( spriteevent * sprite )
    for (; x1<=x2 ; x1++, frac += cin_iscale)
      {
      VGAWRITEMAP(x1&3);
+#ifdef DOS
      ScaleFilmPost(((p->collumnofs[frac>>FRACTIONBITS])+shape),buf+(x1>>2));
+#else
+     ScaleFilmPost(((p->collumnofs[frac>>FRACTIONBITS])+shape),buf+x1);
+#endif
      }
 }
 
@@ -649,8 +684,12 @@ void DrawBlankScreen ( void )
 */
 void DrawClearBuffer ( void )
 {
+#ifdef DOS
   VGAMAPMASK(15);
   memset((byte *)bufferofs,0,SCREENBWIDE*MAXSCREENHEIGHT);
+#else
+  memset((byte *)bufferofs,0,MAXSCREENWIDTH*MAXSCREENHEIGHT);
+#endif
 }
 
 /*
@@ -826,6 +865,8 @@ void PrecacheCinematicEffect ( enum_eventtype type, void * effect )
       case flic:
          PrecacheFlic ( (flicevent *) effect );
          break;
+      default:
+	  ;
       }
 }
 
@@ -846,12 +887,20 @@ void ProfileDisplay ( void )
 
    DrawClearBuffer ();
 
+   plane = 0;
+   
+#ifdef DOS
    for (plane=0;plane<4;plane++)
+#endif
       {
       buf=(byte *)bufferofs;
       VGAWRITEMAP(plane);
 
+#ifdef DOS
       for (i=plane;i<MAXSCREENWIDTH;i+=4,buf++)
+#else
+      for (i=0;i<MAXSCREENWIDTH;i++,buf++)
+#endif
          {
          DrawFilmPost(buf,&src[0],200);
          }
@@ -879,7 +928,11 @@ void DrawPostPic ( int lumpnum )
 
    height = pic->height;
 
+   plane = 0;
+   
+#ifdef DOS
    for (plane=0;plane<4;plane++)
+#endif
       {
       buf=(byte *)bufferofs;
 
@@ -887,10 +940,13 @@ void DrawPostPic ( int lumpnum )
 
       VGAWRITEMAP(plane);
 
+#ifdef DOS
       for (i=plane;i<MAXSCREENWIDTH;i+=4,src+=(pic->height<<2),buf++)
+#else
+      for (i=0;i<MAXSCREENWIDTH;i++,src+=pic->height,buf++)
+#endif
          {
          DrawFilmPost(buf,src,height);
          }
       }
 }
-

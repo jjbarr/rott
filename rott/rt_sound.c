@@ -33,8 +33,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "watcom.h"
 #include <stdio.h>
 #include <stdlib.h>
+
+#ifdef DOS
 #include <mem.h>
 #include <io.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "rt_cfg.h"
 #include "isr.h"
 #include "develop.h"
@@ -52,8 +58,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // Local Variables
 
-static soundstart;
-static soundtype;
+static int soundstart;
+static int soundtype;
 int SD_Started=false;
 static boolean PositionStored=false;
 static int NumBadSounds=0;
@@ -69,6 +75,8 @@ int fxnums[ 11 ] = {
    -1, UltraSound, SoundBlaster, SoundMan16, ProAudioSpectrum,
    Awe32, SoundScape, Adlib, SoundSource, TandySoundSource, PC
    };
+
+void MU_SetupGUSInitFile( void );
 
 int MUSIC_GetPosition( void ) {
    songposition pos;
@@ -271,7 +279,11 @@ int SD_Startup ( boolean bombonerror )
       bits     = 8;
       }
 
+#ifdef DOS
    status=FX_Init( card, voices, channels, bits, 11000 );
+#else
+   status=FX_Init( card, voices, channels, bits, 11025 );
+#endif
 
    if (status != FX_Ok)
       {
@@ -363,6 +375,7 @@ int SD_PlayIt ( int sndnum, int angle, int distance, int pitch )
 
    snd=W_CacheLumpNum(SoundNumber(sndnum),PU_STATIC);
 
+#ifdef DOS
    if ( *snd == 'C' )
       {
       voice = FX_PlayVOC3D( snd, pitch, angle, distance,
@@ -373,6 +386,24 @@ int SD_PlayIt ( int sndnum, int angle, int distance, int pitch )
       voice = FX_PlayWAV3D( snd, pitch, angle, distance,
          sounds[sndnum].priority, (unsigned long) sndnum );
       }
+#else
+/* 
+   Oh boy.  The library used to implement these functions may need a 
+   file size.  So, let's just hack these in!
+ */
+   if ( *snd == 'C' )
+      {
+      voice = FX_PlayVOC3D_ROTT( snd, W_LumpLength(SoundNumber(sndnum)),
+         pitch, angle, distance,
+         sounds[sndnum].priority, (unsigned long) sndnum );
+      }
+   else
+      {
+      voice = FX_PlayWAV3D_ROTT( snd, W_LumpLength(SoundNumber(sndnum)),
+         pitch, angle, distance,
+         sounds[sndnum].priority, (unsigned long) sndnum );
+      }
+#endif
 
    if ( voice < FX_Ok )
       {
@@ -385,7 +416,7 @@ int SD_PlayIt ( int sndnum, int angle, int distance, int pitch )
 */
       NumBadSounds++;
       SoftError("SD_PlayIt: Error/Warning %s\n",FX_ErrorString( FX_Error ));
-      SoftError("BadSoundNumber %ld time %ld\n",NumBadSounds,ticcount);
+      SoftError("BadSoundNumber %ld time %ld\n",NumBadSounds,GetTicCount());
 #endif
       SD_MakeCacheable( sndnum );
 
@@ -796,8 +827,8 @@ void SD_WaitSound ( int handle )
 
    while (FX_SoundActive(handle)!=0)
       {
-      time=ticcount+1;
-      while (time>ticcount) {}
+      time=GetTicCount()+1;
+      while (time>GetTicCount()) {}
       if ((LastScan) || IN_GetMouseButtons())
          break;
       }
@@ -1042,7 +1073,7 @@ int MU_Startup ( boolean bombonerror )
 
    status=MUSIC_Init( card, MidiAddress );
 
-   if (status != MUSIC_Ok)
+   if (status != MUSIC_Ok) {
       if (bombonerror)
          {
          DeleteSoundFile ();
@@ -1050,6 +1081,7 @@ int MU_Startup ( boolean bombonerror )
          }
       else
          return (status);
+   }
 
    currentsong=0;
 
@@ -1190,8 +1222,8 @@ void MU_FadeToSong ( int num, int time )
 
    while (MU_FadeActive())
       {
-      t=ticcount;
-      while (ticcount==t) {}
+      t=GetTicCount();
+      while (GetTicCount()==t) {}
       }
 
    MU_FadeIn (num,time>>1);

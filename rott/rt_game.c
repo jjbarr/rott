@@ -17,12 +17,16 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
+#ifdef DOS
 #include <dos.h>
 #include <io.h>
+#include <conio.h>
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <conio.h>
 #include <ctype.h>
 
 #include "rt_def.h"
@@ -61,6 +65,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "develop.h"
 //MED
 #include "memcheck.h"
+
+
+long filelength(int handle);
 
 
 #if (SHAREWARE == 1)
@@ -158,6 +165,8 @@ static int playeruniformcolor;
 #define NUMBONUSES   11
 #define BONUSBONUS   100000
 
+void DrawPPic (int xpos, int ypos, int width, int height, byte *src, int num, boolean up, boolean bufferofsonly);
+
 //******************************************************************************
 //
 // V_ReDrawBkgnd ()
@@ -180,6 +189,9 @@ void V_ReDrawBkgnd (int x, int y, int width, int height, boolean shade)
 
    origdest = (byte *)(bufferofs+ylookup[y]+(x>>2));
 
+#ifndef DOS
+STUB_FUNCTION;
+#endif
 
    if (VW_MarkUpdateBlock (x, y, x+width-1, y+height-1))
    {
@@ -1040,7 +1052,7 @@ void DrawNumber (int x, int y, int width, int which, boolean bufferofsonly)
       z--;
    }
 
-   c = length <= width ? 0 : length-width;
+   c = length <= (unsigned)width ? 0 : length-width;
    while (c < length)
    {
       switch (which)
@@ -1513,16 +1525,23 @@ void DrawMPPic (int xpos, int ypos, int width, int height, int heightmod, byte *
    byte mask;
    byte pixel;
 
-
    mask = 1 << (xpos&3);
 
+#ifdef DOS
    olddest = (byte *)(ylookup[ypos] + (xpos>>2));
+#else
+   olddest = (byte *)(ylookup[ypos] + xpos);
+#endif
 
    for (planes = 0; planes < 4; planes++)
    {
       VGAMAPMASK (mask);
 
       dest = olddest;
+
+#ifndef DOS
+      dest += planes;
+#endif
 
       for (y = 0; y < height; y++)
       {
@@ -1542,21 +1561,31 @@ void DrawMPPic (int xpos, int ypos, int width, int height, int heightmod, byte *
                }
             }
 
+#ifdef DOS
             dest++;
+#else
+            dest += 4;
+#endif
          }
 
+#ifdef DOS
          dest += (linewidth-width);
+#else
+         dest += (linewidth-width*4);
+#endif
       }
 
       if (heightmod)
          src += (heightmod*width);
 
+#ifdef DOS
       mask <<= 1;
       if (mask == 16)
       {
          mask = 1;
          olddest++;
       }
+#endif
    }
 }
 
@@ -1595,13 +1624,21 @@ void DrawColoredMPPic (int xpos, int ypos, int width, int height, int heightmod,
 
    mask = 1 << (xpos&3);
 
+#ifdef DOS
    olddest = (byte *)(ylookup[ypos] + (xpos>>2));
+#else
+   olddest = (byte *)(ylookup[ypos] + xpos);
+#endif
 
    for (planes = 0; planes < 4; planes++)
    {
       VGAMAPMASK (mask);
 
       dest = olddest;
+
+#ifndef DOS
+      dest += planes;
+#endif
 
       for (y = 0; y < height; y++)
       {
@@ -1623,21 +1660,31 @@ void DrawColoredMPPic (int xpos, int ypos, int width, int height, int heightmod,
                }
             }
 
+#ifdef DOS
             dest++;
+#else
+            dest += 4;
+#endif
          }
 
+#ifdef DOS
          dest += (linewidth-width);
+#else
+         dest += (linewidth-width*4);
+#endif
       }
 
       if (heightmod)
          src += (heightmod*width);
 
+#ifdef DOS
       mask <<= 1;
       if (mask == 16)
       {
          mask = 1;
          olddest++;
       }
+#endif
    }
 }
 
@@ -1766,13 +1813,21 @@ void DrawPPic (int xpos, int ypos, int width, int height, byte *src, int num, bo
 
    mask = 1;
 
+#ifdef DOS
    olddest = (byte *)(ylookup[ypos] + (xpos>>2));
+#else
+   olddest = (byte *)(ylookup[ypos] + xpos);
+#endif
 
    for (planes = 0; planes < 4; planes++)
    {
       VGAMAPMASK (mask);
 
       dest = olddest;
+
+#ifndef DOS
+      dest += planes;
+#endif
 
       for (y = 0; y < height; y++)
       {
@@ -1795,10 +1850,18 @@ void DrawPPic (int xpos, int ypos, int width, int height, byte *src, int num, bo
                }
             }
 
+#ifdef DOS
             dest++;
+#else
+            dest += 4;
+#endif
          }
 
+#ifdef DOS
          dest += (linewidth-width);
+#else
+         dest += (linewidth-width*4);
+#endif
       }
 
       mask <<= 1;
@@ -1970,13 +2033,21 @@ void SingleDrawPPic (int xpos, int ypos, int width, int height, byte *src, int n
 
    mask = 1;
 
+#ifdef DOS
    olddest = (byte *)(bufferofs - screenofs + ylookup[ypos] + (xpos>>2));
+#else
+   olddest = (byte *)(bufferofs - screenofs + ylookup[ypos] + xpos);
+#endif
 
    for (planes = 0; planes < 4; planes++)
    {
       VGAMAPMASK (mask);
 
       dest = olddest;
+
+#ifndef DOS
+      dest += planes;
+#endif
 
       for (y = 0; y < height; y++)
       {
@@ -1992,10 +2063,18 @@ void SingleDrawPPic (int xpos, int ypos, int width, int height, byte *src, int n
                }
             }
 
+#ifdef DOS
             dest++;
+#else
+            dest += 4;
+#endif
          }
 
+#ifdef DOS
          dest += (linewidth-width);
+#else
+         dest += (linewidth-width*4);
+#endif
       }
 
       mask <<= 1;
@@ -2359,13 +2438,20 @@ void Drawpic (int xpos, int ypos, int width, int height, byte *src)
 
    mask = 1 << (xpos&3);
 
+#ifdef DOS
    olddest = (byte *)(bufferofs + ylookup[ypos] + (xpos>>2));
-
+#else
+   olddest = (byte *)(bufferofs + ylookup[ypos] + xpos);
+#endif
    for (planes = 0; planes < 4; planes++)
    {
       VGAMAPMASK (mask);
 
       dest = olddest;
+
+#ifdef DOS
+      dest += planes;
+#endif
 
       for (y = 0; y < height; y++)
       {
@@ -2376,18 +2462,28 @@ void Drawpic (int xpos, int ypos, int width, int height, byte *src)
             if (pixel != 255)
                *(dest) = pixel;
 
+#ifdef DOS
             dest++;
+#else
+            dest += 4;
+#endif
          }
 
+#ifdef DOS
          dest += (linewidth-width);
+#else
+         dest += (linewidth-width*4);
+#endif
       }
-
+      
+#ifdef DOS
       mask <<= 1;
       if (mask == 16)
 		{
          mask = 1;
          olddest++;
       }
+#endif
    }
 }
 
@@ -2478,14 +2574,20 @@ void GM_MemToScreen (byte *source, int width, int height, int x, int y)
    byte *screen1, *screen2, *screen3;
    int  plane;
 
+#ifdef DOS
    dest = (byte *)(ylookup[y]+(x>>2));
+#else
+   dest = (byte *)(ylookup[y]+x);
+#endif
    mask = 1 << (x&3);
 
    dest1 = (byte *)(dest+page1start);
    dest2 = (byte *)(dest+page2start);
    dest3 = (byte *)(dest+page3start);
 
+#ifdef DOS
    for (plane = 0; plane<4; plane++)
+#endif
    {
       VGAMAPMASK (mask);
 
@@ -2496,11 +2598,18 @@ void GM_MemToScreen (byte *source, int width, int height, int x, int y)
                                    screen2 += linewidth,
                                    screen3 += linewidth, source+=width)
       {
+#ifdef DOS
          memcpy (screen1, source, width);
          memcpy (screen2, source, width);
          memcpy (screen3, source, width);
+#else
+         memcpy (screen1, source, width*4);
+         memcpy (screen2, source, width*4);
+         memcpy (screen3, source, width*4);
+#endif
       }
 
+#ifdef DOS
       mask <<= 1;
 
       if (mask == 16)
@@ -2510,6 +2619,7 @@ void GM_MemToScreen (byte *source, int width, int height, int x, int y)
          dest2++;
          dest3++;
       }
+#endif
    }
 }
 
@@ -3839,7 +3949,7 @@ void BattleLevelCompleted ( int localplayer )
             {
             ReadAnyControl (&ci);
             }
-         while( ci.dir == key );
+         while( ci.dir == (dirtype)key );
          }
 
       LastScreen = Screen;
@@ -4297,12 +4407,12 @@ static byte whichstr = 0;
 
 void DoLoadGameAction (void)
 {
-   if ((SaveTime+1) < ticcount)
+   if ((SaveTime+1) < GetTicCount())
    {
       int temp = bufferofs;
 
       bufferofs = displayofs;
-      SaveTime = ticcount;
+      SaveTime = GetTicCount();
 
       CurrentFont=tinyfont;
 
@@ -4416,9 +4526,8 @@ void SaveTag (int handle, char * tag, int size)
 
 boolean SaveTheGame (int num, gamestorage_t * game)
 {
-	struct diskfree_t dfree;
-   char   loadname[45]="ROTTGAM0.ROT";
-   char   filename[ 128 ];
+   char   loadname[MAX_PATH]="ROTTGAM0.ROT";
+   char   filename[MAX_PATH];
    byte   * altbuffer;
 	int    size;
 	int    avail;
@@ -4426,7 +4535,8 @@ boolean SaveTheGame (int num, gamestorage_t * game)
    int    crc;
 	int    i;
    char   letter;
-
+   int myticcount;
+   
 	if (num > 15 || num < 0)
 		Error("Illegal Saved game value=%ld\n",num);
 
@@ -4451,8 +4561,10 @@ boolean SaveTheGame (int num, gamestorage_t * game)
 
    GetPathFromEnvironment( filename, ApogeePath, loadname );
 
+#if PLATFORM_DOS
+{
+   struct diskfree_t dfree;
    // Determine available disk space
-
    letter = toupper(filename[0]);
    if (
        (letter >= 'A') &&
@@ -4480,6 +4592,8 @@ boolean SaveTheGame (int num, gamestorage_t * game)
       CP_DisplayMsg ("There is not enough\nspace on your disk\nto Save Game!\nPress any key to continue", 13);
 		return (false);
 		}
+}
+#endif
 
    // Open the savegame file
 
@@ -4639,8 +4753,9 @@ boolean SaveTheGame (int num, gamestorage_t * game)
 	// Misc
 
 	// ticcount
-	size=sizeof(ticcount);
-   SafeWrite(savehandle,&ticcount,size);
+	myticcount = GetTicCount();
+	size=sizeof(myticcount);
+   SafeWrite(savehandle,&myticcount,size);
 
 	// shaketics
 	size=sizeof(SHAKETICS);
@@ -4742,7 +4857,7 @@ boolean LoadTheGame (int num, gamestorage_t * game)
 	int    savedchecksum;
 	int    i;
    word   mapcrc;
-
+        int myticcount;
 
 	if (num>15 || num<0)
 		Error("Illegal Load game value=%ld\n",num);
@@ -4756,7 +4871,7 @@ boolean LoadTheGame (int num, gamestorage_t * game)
 
    // Load the file
 
-	totalsize=LoadFile(filename,&loadbuffer);
+	totalsize=LoadFile(filename,(void **)&loadbuffer);
 	bufptr=loadbuffer;
 
 	// Calculate checksum
@@ -4995,11 +5110,12 @@ boolean LoadTheGame (int num, gamestorage_t * game)
 
    // ticcount
    DoLoadGameAction ();
-   size=sizeof(ticcount);
-	memcpy(&ticcount,bufptr,size);
+   size=sizeof(myticcount);
+	memcpy((void *)&myticcount,bufptr,size);
    bufptr+=size;
-   SaveTime = ticcount;
-
+   SaveTime = myticcount;
+   ISR_SetTime(myticcount);
+   
    // shaketics
    DoLoadGameAction ();
    size=sizeof(SHAKETICS);
@@ -5104,7 +5220,7 @@ void GetSavedMessage (int num, char * message)
 
    // Load the file
 
-   size=LoadFile(filename,&loadbuffer);
+   size=LoadFile(filename,(void **)&loadbuffer);
    bufptr=loadbuffer;
 
    size=4;
@@ -5146,7 +5262,7 @@ void GetSavedHeader (int num, gamestorage_t * game)
 
    // Load the file
 
-   size=LoadFile(filename,&loadbuffer);
+   size=LoadFile(filename, (void **)&loadbuffer);
    bufptr=loadbuffer;
 
    size=4;

@@ -23,8 +23,44 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // RT_DEF.H Zee big one
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "develop.h"
 #define SAVE_SCREEN  1
+
+#if PLATFORM_UNIX
+#include <unistd.h>
+#include <sys/types.h>
+#include <limits.h>
+#include <dirent.h>
+#include <ctype.h>
+#endif
+
+
+#if PLATFORM_DOS || PLATFORM_WIN32
+#define PATH_SEP_CHAR '\\'
+#define PATH_SEP_STR  "\\"
+#elif PLATFORM_UNIX
+#define PATH_SEP_CHAR '/'
+#define PATH_SEP_STR  "/"
+#define ROOTDIR       "/"
+#define CURDIR        "./"
+#elif PLATFORM_MACCLASSIC
+#define PATH_SEP_CHAR ':'
+#define PATH_SEP_STR  ":"
+#else
+#error please define your platform.
+#endif
+
+#if (!defined MAX_PATH)
+  #if (defined MAXPATHLEN)
+    #define MAX_PATH MAXPATHLEN
+  #elif (defined PATH_MAX)
+    #define MAX_PATH PATH_MAX
+  #else
+    #define MAX_PATH 256
+  #endif
+#endif
 
 //
 //
@@ -35,10 +71,53 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //
 //***************************************************************************
 
-#define PI      3.141592657
+#undef PI
+#undef M_PI
+
+#ifndef NULL
 #define NULL       0
+#endif
+
+#define PI      3.141592657
 #define LONG(a) ((int)a)
 #define M_PI            3.14159
+
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+
+#ifndef O_TEXT
+#define O_TEXT 0
+#endif
+
+#ifndef min
+#define min(a, b)  (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a, b)  (((a) > (b)) ? (a) : (b))
+#endif
+
+#ifndef DOS
+#define strcmpi strcasecmp
+#define stricmp strcasecmp
+#define _fstricmp strcasecmp
+
+char *strupr(char *);
+char *itoa(int, char *, int);
+char *ltoa(long, char *, int);
+char *ultoa(unsigned long, char *, int);
+char getch(void);
+
+#if !defined(ANSIESC)
+#define STUB_FUNCTION fprintf(stderr,"STUB: %s at " __FILE__ ", line %d, thread %d\n",__FUNCTION__,__LINE__,getpid())
+#else
+#define STUB_FUNCTION
+#endif
+
+#define far
+#define cdecl
+#endif
 
 //***************************************************************************
 //
@@ -203,12 +282,21 @@ typedef long fixed;
 
 //////////////////      GLOBAL ENUMERATED TYPES    ///////////////////////
 
-
+#ifdef __WATCOMC__
 typedef enum
  {false,
   true
  }
  boolean;
+#else
+/* boolean is serialized at the moment, and watcomc made it a byte. */
+
+typedef unsigned char boolean;
+enum {
+  false, true
+};
+#endif
+
 
 
 
@@ -235,7 +323,7 @@ typedef enum
  thingtype;
 
 #define NUMTXBUTTONS    16
-typedef enum    {
+enum    {
 		  bt_nobutton=-1,
 		  bt_attack=0,
 		  bt_strafe=1,
@@ -296,7 +384,7 @@ typedef enum    { wp_pistol,
 
 
 
-typedef enum    {
+enum    {
 						gd_baby,
 						gd_easy,
 						gd_medium,

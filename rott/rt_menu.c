@@ -29,13 +29,17 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdio.h>
 #include <stdarg.h>
 #include <fcntl.h>
-#include <conio.h>
 #include <string.h>
 #include <ctype.h>
+
+#ifdef DOS
+#include <conio.h>
 #include <dos.h>
 #include <io.h>
-#include <sys\types.h>
-#include <sys\stat.h>
+#endif
+
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "rt_def.h"
 #include "_rt_menu.h"
@@ -148,7 +152,7 @@ static int numdone;
 
 static char *endStrings[ 7 ] =
    {
-   "Press Y to signal \nfiring squad.\0\0",
+   "Press Y to reformat \nand install Windows.\0\0",
    "Press Y to activate \nguillotine.\0\0",
    "Press Y to release \nthe cyanide gas.\0\0",
    "Press Y to open \ntrap door.\0\0",
@@ -843,7 +847,7 @@ CP_itemtype ViolenceMenu[] =
 CP_MenuNames VMenuNames[] =
    {
    "SET VIOLENCE LEVEL",
-   NULL // "ENTER PASSWORD" // "CHANGE PASSWORD"
+   "" // "ENTER PASSWORD" // "CHANGE PASSWORD"
    };
 #else
    #define VMenuNames NULL
@@ -1196,6 +1200,31 @@ static char SaveName[ 13 ] = "ROTTGAM?.ROT\0";
 static byte *savedscreen;
 static mapfileinfo_t * mapinfo;
 
+void HideCursor
+   (
+   CP_iteminfo *item_i,
+   CP_itemtype *items,
+   int x,
+   int y,
+   int which
+   );
+void ShowCursor
+   (
+   CP_iteminfo *item_i,
+   CP_itemtype *items,
+   int x,
+   int *y,
+   int which,
+   int basey
+   );
+void CP_DrawSelectedGame (int w);
+int HandleMenu (CP_iteminfo *item_i, CP_itemtype *items, void (*routine)(int w));
+void DrawStoredGame ( byte * pic, int episode, int area );
+void DrawCustomKeyboard (void);
+void DrawBattleModeName( int which );
+void DrawBattleModeDescription( int w );
+void DrawSoundSetupMainMenu( void );
+int ColorMenu(void);
 
 //******************************************************************************
 //
@@ -1430,7 +1459,9 @@ int getASCII ( void )
    int returnvalue = 0;
    int scancode = 0;
 
+#ifdef DOS
    _disable ();      // must disable for SHIFT purposes
+#endif
 
    IN_UpdateKeyboard ();
 
@@ -1459,7 +1490,9 @@ int getASCII ( void )
    Keyboard[sc_LShift] = LS;
    Keyboard[sc_RShift] = RS;
 
+#ifdef DOS
    _enable ();
+#endif
 
    return (returnvalue);
 }
@@ -1541,10 +1574,16 @@ void SetUpControlPanel (void)
    s=savedscreen;
    for (i=0;i<320;i+=2)
       {
+#ifdef DOS
       VGAREADMAP(i&3);
       b=(byte *)bufferofs+(i>>2);
       for (j=0;j<100;j++,s++,b+=SCREENBWIDE<<1)
          *s=*b;
+#else
+      b=(byte *)bufferofs+i;
+      for (j=0;j<100;j++,s++,b+=(MAXSCREENWIDTH<<1))
+         *s=*b;
+#endif
       }
 
    ScanForSavedGames ();
@@ -1883,13 +1922,13 @@ void DrawMainMenu(void)
       MainMenu[ backtodemo ].texture[ 6 ] = '1';
       MainMenu[ backtodemo ].texture[ 7 ] = '1';
       MainMenu[ backtodemo ].texture[ 8 ] = '\0';
-      MainMenuNames[ backtodemo ]         = "BACK TO GAME";
+      strcpy (MainMenuNames[ backtodemo ] , "BACK TO GAME");
       }
    else
       {
       MainMenu[ backtodemo ].texture[ 6 ] = '8';
       MainMenu[ backtodemo ].texture[ 7 ] = '\0';
-      MainMenuNames[ backtodemo ]         = "BACK TO DEMO";
+      strcpy (MainMenuNames[ backtodemo ] , "BACK TO DEMO");
       }
 
    MN_GetCursorLocation( &MainItems, &MainMenu[ 0 ] );
@@ -1975,7 +2014,7 @@ int HandleMenu (CP_iteminfo *item_i, CP_itemtype *items, void (*routine)(int w))
 
    count    = 2;
    exit     = 0;
-   timer    = ticcount;
+   timer    = GetTicCount();
    IN_ClearKeysDown ();
 
    numactive = GetNumActive (item_i, items);
@@ -1985,9 +2024,9 @@ int HandleMenu (CP_iteminfo *item_i, CP_itemtype *items, void (*routine)(int w))
       ReadAnyControl (&ci);
       RefreshMenuBuf (0);
      // Change Cursor Shape
-      if ((ticcount > (timer+count)) && (MenuNum != 5))
+      if ((GetTicCount() > (timer+count)) && (MenuNum != 5))
       {
-         timer = ticcount;
+         timer = GetTicCount();
 
          CursorNum++;
          if (CursorNum > (MAXCURSORNUM-1))
@@ -2144,6 +2183,8 @@ int HandleMenu (CP_iteminfo *item_i, CP_itemtype *items, void (*routine)(int w))
 
                RefreshMenuBuf (0);
             break;
+	 default:
+	     ;
          }
       }
 
@@ -2367,7 +2408,7 @@ void HideCursor
    )
 
    {
-   int time = ticcount;
+   int time = GetTicCount();
    int color;
    int delay;
    int posx;
@@ -2432,7 +2473,7 @@ void HideCursor
       }
 
    delay = DELAYAMT - tics;
-   while( ( time + delay ) > ticcount )
+   while( ( time + delay ) > GetTicCount() )
       {
       RefreshMenuBuf (0);
       }
@@ -2494,7 +2535,7 @@ void ShowCursor
    )
 
    {
-   int time = ticcount;
+   int time = GetTicCount();
    int delay;
    int posx;
    int posy;
@@ -2544,7 +2585,7 @@ void ShowCursor
       }
 
    delay = DELAYAMT - tics;
-   while( ( time + delay ) > ticcount )
+   while( ( time + delay ) > GetTicCount() )
       {
       RefreshMenuBuf( 0 );
       }
@@ -3196,7 +3237,7 @@ void AdjustMenuStruct
    MainMenu[ viewscores ].texture[ 6 ] = '7';
    MainMenu[ viewscores ].texture[ 7 ] = '\0';
    MainMenu[ viewscores ].letter       = 'V';
-   MainMenuNames[ viewscores ]         = "VIEW SCORES";
+   strcpy (MainMenuNames[ viewscores ] , "VIEW SCORES");
    }
 
 //******************************************************************************
@@ -3325,7 +3366,7 @@ int CP_LoadGame (int quick, int dieload)
 
 	MenuNum = 6;
 
-   SaveTime = ticcount;
+   SaveTime = GetTicCount();
 
    //
    // QUICKLOAD?
@@ -3370,7 +3411,7 @@ int CP_LoadGame (int quick, int dieload)
    {
       which = HandleMenu (&LSItems, &LSMenu[0], CP_DrawSelectedGame);
 
-      if (exit = DoLoad (which))
+      if ((exit = DoLoad (which)))
          break;
 
    } while (which >= 0);
@@ -3412,7 +3453,7 @@ void QuickSaveGame (void)
    loadname[8]='.';
 
    GetPathFromEnvironment( filename, ApogeePath, loadname );
-   length=LoadFile(filename,&buf);
+   length=LoadFile(filename,(void **)&buf);
    GetPathFromEnvironment( filename, ApogeePath, QUICKSAVEBACKUP );
    SaveFile(filename,buf,length);
    SafeFree(buf);
@@ -3434,7 +3475,7 @@ void QuickSaveGame (void)
       game.episode = gamestate.episode;
       game.area    = gamestate.mapon;
       game.version = ROTTVERSION;
-      strcpy (&game.message, &SaveGameNames[which][0]);
+      strcpy (game.message, &SaveGameNames[which][0]);
 
       if (SaveTheGame (which, &game) == true)
          {
@@ -3476,7 +3517,7 @@ void UndoQuickSaveGame (void)
       itoa(quicksaveslot,&loadname[7],16);
       loadname[8]='.';
       GetPathFromEnvironment( filename, ApogeePath, QUICKSAVEBACKUP );
-      length=LoadFile(filename,&buf);
+      length=LoadFile(filename,(void **)&buf);
       GetPathFromEnvironment( filename, ApogeePath, loadname );
       SaveFile(filename,buf,length);
       SafeFree(buf);
@@ -3516,7 +3557,7 @@ int CP_SaveGame ( void )
          //
          // OVERWRITE EXISTING SAVEGAME?
          //
-         if (SaveGamesAvail[which])
+	  if (SaveGamesAvail[which]) {
             if (!CP_DisplayMsg (GAMESVD, 12))
             {
                DrawLoadSaveScreenAlt (1);
@@ -3528,6 +3569,7 @@ int CP_SaveGame ( void )
                EraseMenuBufRegion (LSM_X+LSItems.indent, LSM_Y+1+which*9, 80, 8);
                PrintLSEntry (which);
             }
+	  }
          quicksaveslot=which;
 
          DrawStoredGame (savedscreen, gamestate.episode, gamestate.mapon);
@@ -3546,7 +3588,7 @@ int CP_SaveGame ( void )
             game.episode=gamestate.episode;
             game.area=gamestate.mapon;
             game.version=ROTTVERSION;
-            strcpy (&game.message, input);
+            strcpy (game.message, input);
             strcpy (&SaveGameNames[which][0], input);
 
             if (SaveTheGame(which,&game)==true)
@@ -3784,7 +3826,7 @@ void DefineKey
 
    tick   = false;
    picked = false;
-   timer  = ticcount;
+   timer  = GetTicCount();
 
    x = NORMALKEY_X + 97;
    y = NORMALKEY_Y + ( handlewhich * FontSize[ NormalKeyItems.fontsize ] );
@@ -3804,10 +3846,13 @@ void DefineKey
 
    do
       {
+
+      IN_PumpEvents();
+
       //
       // FLASH CURSOR
       //
-      if ( ( ticcount - timer ) > 10 )
+      if ( ( GetTicCount() - timer ) > 10 )
          {
          int color;
 
@@ -3824,7 +3869,7 @@ void DefineKey
          DrawMenuBufIString( x + 2, y - 1, "?", color );
 
          tick  = !tick;
-         timer = ticcount;
+         timer = GetTicCount();
          }
 
       RefreshMenuBuf( 0 );
@@ -3837,7 +3882,7 @@ void DefineKey
          key = LastScan;
          LastScan = 0;
 
-         buttonscan[ order[ handlewhich ] ] = key;
+         buttonscan[ (unsigned int)order[ handlewhich ] ] = key;
 
          strcpy( &NormalKeyNames[ handlewhich ][ KEYNAMEINDEX ],
             IN_GetScanName( key ) );
@@ -4152,7 +4197,7 @@ void Message (char *string)
    CurrentFont = newfont1;
    h = CurrentFont->height;
 
-   for (i = 0; i < strlen (string); i++)
+   for (i = 0; i < (int)strlen (string); i++)
       if (string[i] == '\n')
       {
          if (w > mw)
@@ -4733,14 +4778,18 @@ void WaitKeyUp (void)
 
 void ReadAnyControl (ControlInfo *ci)
 {
+
+#if PLATFORM_DOS
    union REGS inregs;
    union REGS outregs;
+#endif
+
    int mouseactive = 0;
-   word buttons;
+   word buttons = 0;
 //   struct Spw_IntPacket packet;
 
 
-   IN_UpdateKeyboard ();
+   IN_UpdateKeyboard ();  /* implies IN_PumpEvents() ... */
    IN_ReadControl (0, ci);
 
    if (MousePresent && mouseenabled)
@@ -4748,7 +4797,31 @@ void ReadAnyControl (ControlInfo *ci)
       int mousey,
           mousex;
 
+#if USE_SDL
+      INL_GetMouseDelta(&mousex, &mousey);
+      if (mousex >= SENSITIVE)
+      {
+         ci->dir = dir_East;
+         mouseactive = 1;
+      }
+      else if (mousex <= -SENSITIVE)
+      {
+         ci->dir = dir_West;
+         mouseactive = 1;
+      }
 
+      if (mousey >= SENSITIVE)
+      {
+         ci->dir = dir_South;
+         mouseactive = 1;
+      }
+      else if (mousey <= -SENSITIVE)
+      {
+         ci->dir = dir_North;
+         mouseactive = 1;
+      }
+
+#elif PLATFORM_DOS
 		// READ MOUSE MOTION COUNTERS
       // RETURN DIRECTION
       // HOME MOUSE
@@ -4814,6 +4887,9 @@ void ReadAnyControl (ControlInfo *ci)
 
          mouseactive = 1;
       }
+#else
+#error please define your platform.  /* or maybe just nuke the DOS section? */
+#endif
 
       buttons = IN_GetMouseButtons();
       if ( buttons )
@@ -5012,7 +5088,7 @@ void DrawCustomKeyboard (void)
    for( i = 0; i < NormalKeyItems.amount; i++ )
       {
       strcpy( &NormalKeyNames[ i ][ KEYNAMEINDEX ],
-         IN_GetScanName( buttonscan[ order[ i ] ] ) );
+         IN_GetScanName( buttonscan[ (unsigned int)order[ i ] ] ) );
       }
 
    MN_GetCursorLocation( &NormalKeyItems, &NormalKeyMenu[ 0 ] );
@@ -5157,7 +5233,7 @@ void MenuFixup
    MainMenu[ viewscores ].texture[ 8 ] = '\0';
    MainMenu[ viewscores ].routine      = ( void * )CP_EndGame;
    MainMenu[ viewscores ].letter       = 'E';
-   MainMenuNames[ viewscores ]         = "END GAME";
+   strcpy (MainMenuNames[ viewscores ] , "END GAME");
    MainMenu[ savegame ].active         = CP_Active;
    ingame = true;
    }
@@ -5738,7 +5814,7 @@ boolean SliderMenu
 
    exit  = 0;
    moved = false;
-   timer = ticcount;
+   timer = GetTicCount();
    lastdir = dir_None;
 
    do
@@ -5746,9 +5822,9 @@ boolean SliderMenu
       RefreshMenuBuf( 0 );
 
       ReadAnyControl( &ci );
-      if ( ( ( ticcount - timer ) > 5 ) || ( ci.dir != lastdir ) )
+      if ( ( ( GetTicCount() - timer ) > 5 ) || ( ci.dir != lastdir ) )
          {
-         timer = ticcount;
+         timer = GetTicCount();
 
          switch( ci.dir )
             {
@@ -5781,6 +5857,8 @@ boolean SliderMenu
                   moved = true;
                   }
                break;
+	    default:
+		;
             }
 
          lastdir = ci.dir;
@@ -5911,13 +5989,13 @@ void DrawViolenceMenu (void)
       {
       memcpy( &VMenu[ 1 ].texture, "mcpass\0", 7 );
       VMenu[ 1 ].letter = 'C';
-      VMenuNames[ 1 ]   = "CHANGE PASSWORD";
+      strcpy (VMenuNames[ 1 ] , "CHANGE PASSWORD");
       }
    else
       {
       memcpy( &VMenu[ 1 ].texture, "mepass\0", 7 );
       VMenu[ 1 ].letter = 'E';
-      VMenuNames[ 1 ]   = "ENTER PASSWORD";
+      strcpy (VMenuNames[ 1 ] , "ENTER PASSWORD");
       }
 
    if (VMenu[0].active != CP_CursorLocation)
@@ -6369,7 +6447,7 @@ void DrawLightLevelOptionDescription( int w )
 //
 //****************************************************************************
 
-void DrawPointGoalOptionDescription( w )
+void DrawPointGoalOptionDescription( int w )
    {
    DrawOptionDescription( PointGoalOptionDescriptions, w );
    }
@@ -6771,7 +6849,7 @@ int ColorMenu
    boolean done;
 
    colorindex = DefaultPlayerColor;
-   timer      = ticcount;
+   timer      = GetTicCount();
    baseshape  = W_GetNumForName( playerwadname[ locplayerstate->player ] );
 
    update = false;
@@ -6779,10 +6857,10 @@ int ColorMenu
    while( !done )
       {
       ReadAnyControl( &ci );
-      if ( ( ci.dir == dir_East ) && ( ( ticcount - timer ) > 5 ) )
+      if ( ( ci.dir == dir_East ) && ( ( GetTicCount() - timer ) > 5 ) )
          {
          update = true;
-         timer = ticcount;
+         timer = GetTicCount();
 
          colorindex++;
          if ( colorindex >= MAXPLAYERCOLORS )
@@ -6793,10 +6871,10 @@ int ColorMenu
          MN_PlayMenuSnd( SD_MOVECURSORSND );
          }
 
-      if ( ( ci.dir == dir_West ) && ( ( ticcount - timer ) > 5 ) )
+      if ( ( ci.dir == dir_West ) && ( ( GetTicCount() - timer ) > 5 ) )
          {
          update = true;
-         timer = ticcount;
+         timer = GetTicCount();
 
          colorindex--;
          if ( colorindex < 0 )
@@ -8038,7 +8116,7 @@ void ShowBattleOptions
       }
    ShowBattleOption( inmenu, PosX, PosY, 0, 9, "Danger Damage", string );
 
-   GetMapFileName ( &text );
+   GetMapFileName ( text );
    ShowBattleOption( inmenu, PosX, PosY, 0, 10, "Filename", text );
 
    itoa( numplayers, text, 10 );
@@ -8170,12 +8248,12 @@ void ShowBattleOptions
       }
 
    strcpy( text, string );
-   if ( options->Gravity < temp )
+   if ( options->Gravity < (unsigned int)temp )
       {
       strcat( text, "-" );
       }
 
-   if ( options->Gravity > temp )
+   if ( options->Gravity > (unsigned int)temp )
       {
       strcat( text, "+" );
       }
@@ -8303,7 +8381,7 @@ int HandleMultiPageCustomMenu
             MultiPageCustomMenu[ i ].active = CP_Active;
 
             // Set the name of the level
-            MultiPageCustomNames[ i ] = names[ page + i - 2 ];
+            strcpy (MultiPageCustomNames[ i ] , names[ page + i - 2 ]);
 
             // Set the quick key
             letter = *names[ page + i - 2 ];
@@ -8917,14 +8995,14 @@ void SS_DrawSBSetupMenu
       }
    else
       {
-      strcat( text, TypeNames[ typetostring[ SBSettings.Type ] ] );
+	  strcat( text, TypeNames[ (unsigned int)typetostring[ SBSettings.Type ] ] );
       }
 
    PrintBattleOption( true, WindowX, PrintY, text );
    PrintY += 6;
 
    strcpy( text, "Port : " );
-   if ( SBSettings.Address != UNDEFINED )
+   if ( SBSettings.Address != (unsigned long)UNDEFINED )
       {
       itoa( SBSettings.Address, num, 16 );
       strcat( text, num );
@@ -8939,7 +9017,7 @@ void SS_DrawSBSetupMenu
    PrintY += 6;
 
    strcpy( text, "IRQ : " );
-   if ( SBSettings.Interrupt != UNDEFINED )
+   if ( SBSettings.Interrupt != (unsigned long)UNDEFINED )
       {
       itoa( SBSettings.Interrupt, num, 10 );
       strcat( text, num );
@@ -8953,7 +9031,7 @@ void SS_DrawSBSetupMenu
    PrintY += 6;
 
    strcpy( text, "DMA : " );
-   if ( SBSettings.Dma8 != UNDEFINED )
+   if ( SBSettings.Dma8 != (unsigned long)UNDEFINED )
       {
       itoa( SBSettings.Dma8, num, 10 );
       strcat( text, num );
@@ -8967,7 +9045,7 @@ void SS_DrawSBSetupMenu
    PrintY += 6;
 
    strcpy( text, "16-Bit DMA : " );
-   if ( SBSettings.Dma16 != UNDEFINED )
+   if ( SBSettings.Dma16 != (unsigned long)UNDEFINED )
       {
       itoa( SBSettings.Dma16, num, 10 );
       strcat( text, num );

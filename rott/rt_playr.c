@@ -18,7 +18,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
+#ifdef DOS
 #include <dos.h>
+#endif
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -249,8 +252,8 @@ void     PlayerMissileAttack(objtype* );
 void     Cmd_Use(objtype*);
 //void     ComError (char *error, ...);
 
-statetype s_free = {false,0,0,T_Free,NULL,&s_free};
-statetype s_inelevator = {false,0,420,T_Player,NULL,&s_player};
+statetype s_free = {false,0,0,T_Free,0,&s_free};
+statetype s_inelevator = {false,0,420,T_Player,0,&s_player};
 
 #if (SHAREWARE == 0)
 statetype s_dogwait = {true,SERIALDOG_W11,50,T_Player,SF_DOGSTATE,&s_serialdog};
@@ -259,7 +262,7 @@ statetype s_doguse = {true,SERIALDOG_W11,140,T_DogUse,SF_DOGSTATE,&s_serialdog};
 statetype s_doglick = {true,SERIALDOG_W11,0,T_DogLick,SF_DOGSTATE,&s_doglick};
 #endif
 
-statetype s_tag = {false,CASSATT_S1,20,T_Tag,NULL,&s_player};
+statetype s_tag = {false,CASSATT_S1,20,T_Tag,0,&s_player};
 
 static SWIFT_3DStatus SWIFTStatus;
 
@@ -285,6 +288,10 @@ static byte JoyDblClickPressed[ 4 ] = { false };
 
 static int PlayerRecording=-1;
 static int nettics;
+
+void Move_Player_From_Exit_To_Start(objtype *ob);
+void CheckTagGame(objtype *actor1,objtype*actor2);
+void CheckFlying(objtype*ob,playertype *pstate);
 
 /*
 ===============
@@ -1823,8 +1830,12 @@ void PollKeyboardButtons (void)
    IN_UpdateKeyboard();
 
    for (i = 0; i < NUMBUTTONS; i++)
+   {
       if (Keystate[buttonscan[i]])
+      {
          buttonpoll[i] = true;
+      }
+   }
 }
 
 //******************************************************************************
@@ -1870,10 +1881,10 @@ void PollMouseButtons (void)
 
                // Is this the first click, or a really late click?
                if ( ( DoubleClickCount[ i ] == 0 ) ||
-                  ( ticcount >= DoubleClickTimer[ i ] ) )
+                  ( GetTicCount() >= DoubleClickTimer[ i ] ) )
                   {
                   // Yes, now wait for a second click
-                  DoubleClickTimer[ i ] = ticcount + DoubleClickSpeed;
+                  DoubleClickTimer[ i ] = GetTicCount() + DoubleClickSpeed;
 
                      //( tics << 5 );
                   DoubleClickCount[ i ] = 1;
@@ -1973,10 +1984,10 @@ void PollJoystickButtons
 
                // Is this the first click, or a really late click?
                if ( ( JoyDblClickCount[ i ] == 0 ) ||
-                  ( ticcount >= JoyDblClickTimer[ i ] ) )
+                  ( GetTicCount() >= JoyDblClickTimer[ i ] ) )
                   {
                   // Yes, now wait for a second click
-                  JoyDblClickTimer[ i ] = ticcount + DoubleClickSpeed;
+                  JoyDblClickTimer[ i ] = GetTicCount() + DoubleClickSpeed;
 
                      //( tics << 5 );
                   JoyDblClickCount[ i ] = 1;
@@ -2122,16 +2133,9 @@ int sensitivity_scalar[15] =
 
 void PollMouseMove (void)
 {
-   union REGS inregs;
-   union REGS outregs;
-   short int  mousexmove,
-              mouseymove;
+   int  mousexmove, mouseymove;
 
-   inregs.x.eax = MDelta;
-   int386 (0x33, &inregs, &outregs);
-
-   mousexmove = outregs.w.cx;
-	mouseymove = outregs.w.dx;
+   INL_GetMouseDelta(&mousexmove, &mouseymove);
 
    if (abs(mousexmove)>abs(mouseymove))
       mouseymove/=2;
@@ -2167,7 +2171,6 @@ void PollMouseMove (void)
 
 //   if (MY > 0)
 //      MX -= (MX/2);
-
 }
 
 
@@ -2233,6 +2236,7 @@ void PollJoystickMove (void)
 
 void StartVRFeedback (int guntype)
 {
+#ifdef DOS
    union REGS inregs;
    union REGS outregs;
 
@@ -2240,6 +2244,9 @@ void StartVRFeedback (int guntype)
    inregs.x.ebx = 1;
    inregs.x.ecx = guntype;
    int386 (0x33, &inregs, &outregs);
+#else
+	STUB_FUNCTION;
+#endif
 }
 
 //******************************************************************************
@@ -2250,12 +2257,16 @@ void StartVRFeedback (int guntype)
 
 void StopVRFeedback (void)
 {
+#ifdef DOS
    union REGS inregs;
    union REGS outregs;
 
    inregs.x.eax = VR_FEEDBACK_SERVICE;
    inregs.x.ebx = 0;
    int386 (0x33, &inregs, &outregs);
+#else
+	STUB_FUNCTION;
+#endif
 }
 
 //******************************************************************************
@@ -2268,6 +2279,7 @@ void StopVRFeedback (void)
 
 void PollVirtualReality (void)
 {
+#ifdef DOS
    union REGS inregs;
    union REGS outregs;
    short int  mousexmove,
@@ -2325,6 +2337,9 @@ void PollVirtualReality (void)
          buttonpoll[bt_run]=true;
          }
       }
+#else
+	STUB_FUNCTION;
+#endif      
 }
 
 
@@ -2381,7 +2396,7 @@ void PollMove (void)
    {
       if (first)
       {
-         nettics = ticcount + (VBLCOUNTER * 4);
+         nettics = GetTicCount() + (VBLCOUNTER * 4);
          first = 0;
       }
 
@@ -2410,7 +2425,7 @@ void PollMove (void)
                leftmom = 0;
          }
 
-      if ((ticcount > nettics) && (rightmom > (NETMOM * 2)) &&
+      if ((GetTicCount() > nettics) && (rightmom > (NETMOM * 2)) &&
                                   (leftmom > (NETMOM * 2)))
       {
          rightmom = 0;
@@ -2520,10 +2535,10 @@ void PollCyberman (void)
 
                // Is this the first click, or a really late click?
                if ( ( DoubleClickCount[ i ] == 0 ) ||
-                  ( ticcount >= DoubleClickTimer[ i ] ) )
+                  ( GetTicCount() >= DoubleClickTimer[ i ] ) )
                   {
                   // Yes, now wait for a second click
-                  DoubleClickTimer[ i ] = ticcount + DoubleClickSpeed;
+                  DoubleClickTimer[ i ] = GetTicCount() + DoubleClickSpeed;
 
                      //( tics << 5 );
                   DoubleClickCount[ i ] = 1;
@@ -2648,10 +2663,10 @@ void PollAssassin (void)
 
                // Is this the first click, or a really late click?
                if ( ( DoubleClickCount[ i ] == 0 ) ||
-                  ( ticcount >= DoubleClickTimer[ i ] ) )
+                  ( GetTicCount() >= DoubleClickTimer[ i ] ) )
                   {
                   // Yes, now wait for a second click
-                  DoubleClickTimer[ i ] = ticcount + DoubleClickSpeed;
+                  DoubleClickTimer[ i ] = GetTicCount() + DoubleClickSpeed;
 
                      //( tics << 5 );
                   DoubleClickCount[ i ] = 1;
@@ -3636,7 +3651,8 @@ keys:
 				check->flags = stats[stat_emptystatue].flags|FL_ABP;
 				break;
 
-
+			default:
+			    ;
 			}
 		}
 	else
@@ -4551,6 +4567,8 @@ void  T_Attack (objtype *ob)
    #endif
             break;
 
+	 default:
+	     ;
          }
 
       pstate->attackframe++;

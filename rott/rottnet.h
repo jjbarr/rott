@@ -21,12 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifndef rottnet_public
 #define rottnet_public
 
-#if __WATCOMC__
 #include "develop.h"
-#else
-#define SHAREWARE 1
-#include "global.h"
-#endif
 
 #define PEL_WRITE_ADR   0x3c8
 #define PEL_DATA        0x3c9
@@ -76,6 +71,10 @@ typedef struct
 	char	data[MAXPACKETSIZE];
 } rottcom_t;
 
+/*
+#warning rottcom_t needs to be packed
+*/
+
 #if __WATCOMC__
 #pragma pack (4)
 #endif
@@ -85,7 +84,7 @@ typedef struct
 
 #define	ROTTLAUNCHER ("ROTT.EXE")
 
-#if (__WATCOMC__ == 0)
+#if defined(DOS) && (__WATCOMC__ == 0)
 
 extern   rottcom_t   rottcom;
 extern   boolean     pause;

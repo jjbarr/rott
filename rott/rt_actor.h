@@ -50,7 +50,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define ACTIVE(ob)       ((ob == firstactive) || (ob->prevactive) || (ob->nextactive))
 
-typedef enum {SHOOT,SIGHT,DIRCHECK,EXPLOSION,MISSILE};
+enum {SHOOT,SIGHT,DIRCHECK,EXPLOSION,MISSILE};
 
 
 typedef enum
@@ -85,7 +85,7 @@ typedef enum
 #define ACTORSIZE              0x5800
 #define PWALLRAD               0xa000
 
-
+#ifdef __WATCOMC__
 int M_ABS(int value);
 #pragma aux M_ABS =  \
 		  "test eax,eax",                     \
@@ -95,6 +95,9 @@ int M_ABS(int value);
 		  parm    [eax] \
 		  value   [eax]           \
 		  modify exact [eax]
+#else
+#define M_ABS abs
+#endif
 
 #define M_CheckPlayerKilled(ob) \
 { if ((ob->obclass == playerobj) && (ob->flags & FL_DYING)) \
@@ -408,7 +411,7 @@ void     T_Roll(objtype*);
 void     T_BossDied (objtype *ob);
 boolean  QuickSpaceCheck(objtype*,int,int);
 void     PushWallMove(int num);
-void     SpawnNewObj(int,int,statetype*,classtype);
+void     SpawnNewObj(unsigned,unsigned,statetype*,classtype);
 void     SpawnSpring(int,int);
 void     SpawnFourWayGun(int,int);
 void     SpawnSnake(int tilex,int tiley);

@@ -19,18 +19,25 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "rt_def.h"
+
+#ifdef DOS
 #include <malloc.h>
 #include <dos.h>
+#include <conio.h>
+#include <io.h>
+#include <direct.h>
+#elif USE_SDL
+#include "SDL.h"
+#endif
+
 #include <stdarg.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <conio.h>
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <io.h>
 #include <stdlib.h>
-#include <sys\stat.h>
+#include <sys/stat.h>
 #include "watcom.h"
 #include "_rt_util.h"
 #include "rt_util.h"
@@ -48,9 +55,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "rt_view.h"
 #include "modexlib.h"
 #include "rt_cfg.h"
-#include <direct.h>
 //MED
 #include "memcheck.h"
+
+void print_stack (int level);
+long filelength (int handle);
 
 int    egacolor[16];
 byte   *  origpal;
@@ -328,12 +337,16 @@ void Error (char *error, ...)
    if (inerror > 1)
       return;
 
-   ShutDown();
 
 	TextMode ();
+#ifdef DOS
    memcpy ((byte *)0xB8000, &ROTT_ERR, 160*7);
+#elif defined (ANSIESC)
+   DisplayTextSplash (&ROTT_ERR, 7);
+#endif
    memset (msgbuf, 0, 300);
 
+#ifdef DOS
    px = ERRORVERSIONCOL-1;
    py = ERRORVERSIONROW;
 #if (SHAREWARE == 1)
@@ -354,6 +367,7 @@ void Error (char *error, ...)
    px++;
 
    UL_printf (itoa(ROTTMINORVERSION,&buf[0],10));
+#endif
 
 	va_start (argptr, error);
    vsprintf (&msgbuf[0], error, argptr);
@@ -386,24 +400,34 @@ void Error (char *error, ...)
       GetToken (true);
    }
 
+#ifdef ANSIESC
    for (i = 0; i < 8; i++)
       printf ("\n");
+#endif
 
    if (player!=NULL)
       {
-      printf ("Player X     = %lx\n", player->x);
-      printf ("Player Y     = %lx\n", player->y);
-      printf ("Player Angle = %lx\n\n", player->angle);
+      printf ("Player X     = %lx\n", (long int)player->x);
+      printf ("Player Y     = %lx\n", (long int)player->y);
+      printf ("Player Angle = %lx\n\n", (long int)player->angle);
       }
-   printf ("Episode      = %ld\n", gamestate.episode);
+   printf ("Episode      = %ld\n", (long int)gamestate.episode);
 
    if (gamestate.episode > 1)
       level = (gamestate.mapon+1) - ((gamestate.episode-1) << 3);
    else
       level = gamestate.mapon+1;
 
-   printf ("Area         = %ld\n", level);
+   printf ("Area         = %ld\n", (long int)level);
 
+#ifndef DOS
+   print_stack (1);
+#endif
+
+   ShutDown();	// DDOI - moved this so that it doesn't try to access player
+   		// which is freed by this function.
+
+#ifdef DOS
    GetPathFromEnvironment( filename, ApogeePath, ERRORFILE );
    handle=SafeOpenAppend ( filename );
    for (y=0;y<16;y++)
@@ -417,11 +441,16 @@ void Error (char *error, ...)
       }
 
    close(handle);
+#endif
 
    if ( SOUNDSETUP )
       {
       getch();
       }
+
+   #if USE_SDL
+   SDL_Quit();
+   #endif
 
    exit (1);
 }
@@ -606,9 +635,13 @@ int CheckParm (char *check)
 
 
 
-int SafeOpenAppend (char *filename)
+int SafeOpenAppend (char *_filename)
 {
 	int	handle;
+    char filename[MAX_PATH];
+    strncpy(filename, _filename, sizeof (filename));
+    filename[sizeof (filename) - 1] = '\0';
+    FixFilePath(filename);
 
 	handle = open(filename,O_RDWR | O_BINARY | O_CREAT | O_APPEND
 	, S_IREAD | S_IWRITE);
@@ -619,9 +652,13 @@ int SafeOpenAppend (char *filename)
 	return handle;
 }
 
-int SafeOpenWrite (char *filename)
+int SafeOpenWrite (char *_filename)
 {
 	int	handle;
+    char filename[MAX_PATH];
+    strncpy(filename, _filename, sizeof (filename));
+    filename[sizeof (filename) - 1] = '\0';
+    FixFilePath(filename);
 
 	handle = open(filename,O_RDWR | O_BINARY | O_CREAT | O_TRUNC
 	, S_IREAD | S_IWRITE);
@@ -632,9 +669,13 @@ int SafeOpenWrite (char *filename)
 	return handle;
 }
 
-int SafeOpenRead (char *filename)
+int SafeOpenRead (char *_filename)
 {
 	int	handle;
+    char filename[MAX_PATH];
+    strncpy(filename, _filename, sizeof (filename));
+    filename[sizeof (filename) - 1] = '\0';
+    FixFilePath(filename);
 
 	handle = open(filename,O_RDONLY | O_BINARY);
 
@@ -652,7 +693,7 @@ void SafeRead (int handle, void *buffer, long count)
 	while (count)
 	{
 		iocount = count > 0x8000 ? 0x8000 : count;
-		if (read (handle,buffer,iocount) != iocount)
+		if (read (handle,buffer,iocount) != (int)iocount)
 			Error ("File read failure reading %ld bytes",count);
 		buffer = (void *)( (byte *)buffer + iocount );
 		count -= iocount;
@@ -667,7 +708,7 @@ void SafeWrite (int handle, void *buffer, long count)
 	while (count)
 	{
 		iocount = count > 0x8000 ? 0x8000 : count;
-		if (write (handle,buffer,iocount) != iocount)
+		if (write (handle,buffer,iocount) != (int)iocount)
 			Error ("File write failure writing %ld bytes",count);
 		buffer = (void *)( (byte *)buffer + iocount );
 		count -= iocount;
@@ -679,7 +720,7 @@ void SafeWriteString (int handle, char * buffer)
 	unsigned	iocount;
 
    iocount=strlen(buffer);
-	if (write (handle,buffer,iocount) != iocount)
+	if (write (handle,buffer,iocount) != (int)iocount)
 			Error ("File write string failure writing %s\n",buffer);
 }
 
@@ -759,6 +800,171 @@ void	SaveFile (char *filename, void *buffer, long count)
 }
 
 
+void FixFilePath(char *filename)
+{
+#if PLATFORM_UNIX
+    char *ptr;
+    char *lastsep = filename;
+
+    if ((!filename) || (*filename == '\0'))
+        return;
+
+    if (access(filename, F_OK) == 0)  /* File exists; we're good to go. */
+        return;
+
+    for (ptr = filename; 1; ptr++)
+    {
+        if (*ptr == '\\')
+            *ptr = PATH_SEP_CHAR;
+
+        if ((*ptr == PATH_SEP_CHAR) || (*ptr == '\0'))
+        {
+            char pch = *ptr;
+            struct dirent *dent = NULL;
+            DIR *dir;
+
+            if ((pch == PATH_SEP_CHAR) && (*(ptr + 1) == '\0'))
+                return; /* eos is pathsep; we're done. */
+
+            if (lastsep == ptr)
+                continue;  /* absolute path; skip to next one. */
+
+            *ptr = '\0';
+            if (lastsep == filename)
+                dir = opendir((*lastsep == PATH_SEP_CHAR) ? ROOTDIR : CURDIR);
+            else
+            {
+                *lastsep = '\0';
+                dir = opendir(filename);
+                *lastsep = PATH_SEP_CHAR;
+                lastsep++;
+            }
+
+            if (dir == NULL)
+            {
+                *ptr = PATH_SEP_CHAR;
+                return;  /* maybe dir doesn't exist? give up. */
+            }
+
+            while ((dent = readdir(dir)) != NULL)
+            {
+                if (strcasecmp(dent->d_name, lastsep) == 0)
+                {
+                    /* found match; replace it. */
+                    strcpy(lastsep, dent->d_name);
+                    break;
+                }
+            }
+
+            closedir(dir);
+            *ptr = pch;
+            lastsep = ptr;
+
+            if (dent == NULL)
+                return;  /* no match. oh well. */
+
+            if (pch == '\0')  /* eos? */
+                return;
+        }
+    }
+#endif
+}
+
+
+#if PLATFORM_DOS
+    /* no op. */
+#elif PLATFORM_UNIX
+int _dos_findfirst(char *filename, int x, struct find_t *f)
+{
+    char *ptr;
+
+    if (strlen(filename) >= sizeof (f->pattern))
+        return(1);
+
+    strcpy(f->pattern, filename);
+    FixFilePath(f->pattern);
+    ptr = strrchr(f->pattern, PATH_SEP_CHAR);
+
+    if (ptr == NULL)
+    {
+        ptr = filename;
+        f->dir = opendir(CURDIR);
+        printf("  - scanning [%s].\n", CURDIR);
+    }
+    else
+    {
+        *ptr = '\0';
+        f->dir = opendir(f->pattern);
+        printf("  - scanning [%s].\n", f->pattern);
+        memmove(f->pattern, ptr + 1, strlen(ptr) + 1);
+    }
+
+    return(_dos_findnext(f));
+}
+
+
+static int check_pattern_nocase(const char *x, const char *y)
+{
+    if ((x == NULL) || (y == NULL))
+        return(0);  /* not a match. */
+
+    while ((*x) && (*y))
+    {
+        if (*x == '*')
+            Error("Unexpected wildcard!");  /* FIXME? */
+
+        else if (*x == '?')
+        {
+            if (*y == '\0')
+                return(0);  /* anything but EOS is okay. */
+        }
+
+        else
+        {
+            if (toupper((int) *x) != toupper((int) *y))
+                return(0);  /* not a match. */
+        }
+
+        x++;
+        y++;
+    }
+
+    return(*x == *y);  /* it's a match (both should be EOS). */
+}
+
+int _dos_findnext(struct find_t *f)
+{
+    struct dirent *dent;
+
+    if (f->dir == NULL)
+        return(1);  /* no such dir or we're just done searching. */
+
+    while ((dent = readdir(f->dir)) != NULL)
+    {
+        if (check_pattern_nocase(f->pattern, dent->d_name))
+        {
+            if (strlen(dent->d_name) < sizeof (f->name))
+            {
+                strcpy(f->name, dent->d_name);
+                printf("  - [%s] matches [%s].\n", f->name, f->pattern);
+                return(0);  /* match. */
+            }
+        }
+        printf("  - [%s] failed to match [%s].\n", dent->d_name, f->pattern);
+    }
+
+    printf("  - scanned whole dir.\n");
+    closedir(f->dir);
+    f->dir = NULL;
+    return(1);  /* no match in whole directory. */
+}
+
+#else
+#error please define your platform.
+#endif
+
+
+
 void GetPathFromEnvironment( char *fullname, const char *envname, const char *filename )
    {
    char *path;
@@ -768,9 +974,9 @@ void GetPathFromEnvironment( char *fullname, const char *envname, const char *fi
    if ( path != NULL )
       {
       strcpy( fullname, path );
-      if ( fullname[ strlen( fullname ) ] != '\\' )
+      if ( fullname[ strlen( fullname ) ] != PATH_SEP_CHAR )
          {
-         strcat( fullname, "\\" );
+         strcat( fullname, PATH_SEP_STR );
          }
       strcat( fullname, filename );
       }
@@ -778,6 +984,8 @@ void GetPathFromEnvironment( char *fullname, const char *envname, const char *fi
       {
       strcpy( fullname, filename );
       }
+
+      FixFilePath(fullname);
    }
 
 void DefaultExtension (char *path, char *extension)
@@ -789,7 +997,7 @@ void DefaultExtension (char *path, char *extension)
 //
 	src = path + strlen(path) - 1;
 
-	while (*src != '\\' && src != path)
+	while (*src != PATH_SEP_CHAR && src != path)
 	{
 		if (*src == '.')
 			return;			// it has an extension
@@ -803,7 +1011,7 @@ void DefaultPath (char *path, char *basepath)
 {
 	char	temp[128];
 
-	if (path[0] == '\\')
+	if (path[0] == PATH_SEP_CHAR)
 		return;							// absolute path location
 	strcpy (temp,path);
 	strcpy (path,basepath);
@@ -821,7 +1029,7 @@ void ExtractFileBase (char *path, char *dest)
 //
 // back up until a \ or the start
 //
-	while (src != path && *(src-1) != '\\')
+	while (src != path && *(src-1) != PATH_SEP_CHAR)
 		src--;
 
 //
@@ -936,13 +1144,26 @@ long	IntelLong (long l)
 ==============
 */
 
-void GetaPalette (byte *pal)
+void GetaPalette (byte *palette)
 {
+#ifdef DOS
 	int	i;
 
 	OUTP (PEL_READ_ADR,0);
 	for (i=0 ; i<768 ; i++)
-		pal[i] = inp (PEL_DATA)<<2;
+		palette[i] = inp (PEL_DATA)<<2;
+#else
+	int i;
+	SDL_Palette *pal = SDL_GetVideoSurface()->format->palette;
+	
+	for (i = 0; i < 256; i++) {
+		palette[0] = pal->colors[i].r;
+		palette[1] = pal->colors[i].g;
+		palette[2] = pal->colors[i].b;
+		
+		palette += 3;
+	}
+#endif
 }
 
 /*
@@ -957,20 +1178,47 @@ void GetaPalette (byte *pal)
 
 void SetaPalette (byte *pal)
 {
+#ifdef DOS
 	int	i;
 
 	OUTP (PEL_WRITE_ADR,0);
 	for (i=0 ; i<768 ; i++)
 		OUTP (PEL_DATA, pal[i]>>2);
+#else
+   SDL_Color cmap[256];
+   int i;
+
+   for (i = 0; i < 256; i++)
+   {
+	   cmap[i].r = pal[i*3+0];
+	   cmap[i].g = pal[i*3+1];
+	   cmap[i].b = pal[i*3+2];
+   }
+
+   SDL_SetColors (SDL_GetVideoSurface (), cmap, 0, 256);
+#endif
 }
 
-void GetPalette(char * pal)
+void GetPalette(char * palette)
 {
+#ifdef DOS
   int i;
 
   OUTP(0x03c7,0);
   for (i=0;i<256*3;i++)
-     *(pal+(unsigned char)i)=inp(0x3c9)<<2;
+     *(palette+(unsigned char)i)=inp(0x3c9)<<2;
+#else
+	int i;
+	SDL_Palette *pal = SDL_GetVideoSurface()->format->palette;
+	
+	for (i = 0; i < 256; i++) {
+		palette[0] = pal->colors[i].r;
+		palette[1] = pal->colors[i].g;
+		palette[2] = pal->colors[i].b;
+		
+		palette += 3;
+	}
+#endif
 }
 
 void SetPalette ( char * pal )
@@ -1021,6 +1269,98 @@ int US_CheckParm (char *parm, char **strings)
 }
 
 /*
+=============================================================================
+
+                  PALETTE OPS
+
+      To avoid snow, do a WaitVBL BEFORE calling these
+
+=============================================================================
+*/
+
+
+/*
+=================
+=
+= VL_FillPalette
+=
+=================
+*/
+
+void VL_FillPalette (int red, int green, int blue)
+{
+#ifdef DOS
+   int   i;
+
+   OUTP (PEL_WRITE_ADR,0);
+   for (i=0;i<256;i++)
+   {
+      OUTP (PEL_DATA,red);
+      OUTP (PEL_DATA,green);
+      OUTP (PEL_DATA,blue);
+   }
+#else
+   SDL_Color cmap[256];
+   int i;
+
+   for (i = 0; i < 256; i++)
+   {
+           cmap[i].r = red << 2;
+           cmap[i].g = green << 2;
+           cmap[i].b = blue << 2;
+   }
+
+   SDL_SetColors (SDL_GetVideoSurface (), cmap, 0, 256);
+#endif
+}
+
+//===========================================================================
+
+/*
+=================
+=
+= VL_SetColor
+=
+=================
+*/
+
+void VL_SetColor  (int color, int red, int green, int blue)
+{
+#ifdef DOS
+   OUTP (PEL_WRITE_ADR,color);
+   OUTP (PEL_DATA,red);
+   OUTP (PEL_DATA,green);
+   OUTP (PEL_DATA,blue);
+#else
+	STUB_FUNCTION;
+#endif
+}
+
+//===========================================================================
+
+/*
+=================
+=
+= VL_GetColor
+=
+=================
+*/
+
+void VL_GetColor  (int color, int *red, int *green, int *blue)
+{
+#ifdef DOS
+   OUTP (PEL_READ_ADR,color);
+   *red   = inp (PEL_DATA);
+   *green = inp (PEL_DATA);
+   *blue  = inp (PEL_DATA);
+#else
+	STUB_FUNCTION;
+#endif
+}
+
+//===========================================================================
+
+/*
 =================
 =
 = VL_NormalizePalette
@@ -1050,6 +1390,7 @@ void VL_NormalizePalette (byte *palette)
 
 void VL_SetPalette (byte *palette)
 {
+#ifdef DOS
    int   i;
 
    OUTP (PEL_WRITE_ADR, 0);
@@ -1058,6 +1399,19 @@ void VL_SetPalette (byte *palette)
       {
       OUTP (PEL_DATA, gammatable[(gammaindex<<6)+(*palette++)]);
       }
+#else
+   SDL_Color cmap[256];
+   int i;
+
+   for (i = 0; i < 256; i++)
+   {
+	   cmap[i].r = gammatable[(gammaindex<<6)+(*palette++)] << 2;
+	   cmap[i].g = gammatable[(gammaindex<<6)+(*palette++)] << 2;
+	   cmap[i].b = gammatable[(gammaindex<<6)+(*palette++)] << 2;
+   }
+
+   SDL_SetColors (SDL_GetVideoSurface (), cmap, 0, 256);
+#endif
 }
 
 
@@ -1076,12 +1430,25 @@ void VL_SetPalette (byte *palette)
 
 void VL_GetPalette (byte *palette)
 {
+#ifdef DOS
    int   i;
 
    OUTP (PEL_READ_ADR, 0);
 
    for (i = 0; i < 768; i++)
       *palette++ = inp (PEL_DATA);
+#else
+	int i;
+	SDL_Palette *pal = SDL_GetVideoSurface()->format->palette;
+	
+	for (i = 0; i < 256; i++) {
+		palette[0] = pal->colors[i].r >> 2;
+		palette[1] = pal->colors[i].g >> 2;
+		palette[2] = pal->colors[i].b >> 2;
+		
+		palette += 3;
+	}
+#endif
 }
 
 
@@ -1095,6 +1462,7 @@ void VL_GetPalette (byte *palette)
 
 void UL_DisplayMemoryError ( int memneeded )
 {
+#ifdef DOS
    char buf[4000];
    int i;
 
@@ -1127,6 +1495,9 @@ void UL_DisplayMemoryError ( int memneeded )
       {
       getch();
       }
+#else
+	STUB_FUNCTION;
+#endif
    exit (0);
 }
 
@@ -1141,6 +1512,7 @@ void UL_DisplayMemoryError ( int memneeded )
 
 void UL_printf (byte *str)
 {
+#ifdef DOS
    byte *s;
    byte *screen;
 
@@ -1157,6 +1529,13 @@ void UL_printf (byte *str)
       if ((*s < 32) && (*s > 0))
          s++;
    }
+#else
+#ifdef ANSIESC
+   printf ("\x1b[%d;%dH%s",py,px,str);
+#else
+   printf ("%s ",str);	// Hackish but works - DDOI
+#endif
+#endif
 }
 
 /*
@@ -1169,6 +1548,7 @@ void UL_printf (byte *str)
 
 void UL_ColorBox (int x, int y, int w, int h, int color)
 {
+#ifdef DOS
    byte *screen;
    int i,j;
 
@@ -1182,6 +1562,19 @@ void UL_ColorBox (int x, int y, int w, int h, int color)
          screen+=2;
          }
       }
+#elif defined (ANSIESC)
+   int i,j;
+
+
+   for (j=0;j<h;j++)
+      {
+      for (i=0;i<w;i++)
+         {
+         printf ("\x1b[%d;%dH",y+j,x+i);
+         put_dos2ansi(color);
+         }
+      }
+#endif
 }
 
 //******************************************************************************
@@ -1220,6 +1613,20 @@ static PFV Switch;                        /* pointer to comparison routine      
 static int Width;                       /* width of an object in bytes                  */
 static char *Base;                      /* pointer to element [-1] of array             */
 
+
+static void newsift_down(L,U) int L,U;
+{  int c;
+
+   while(1)
+      {c=L+L;
+      if(c>U) break;
+      if( (c+Width <= U) && ((*Comp)(Base+c+Width,Base+c)>0) ) c+= Width;
+      if ((*Comp)(Base+L,Base+c)>=0) break;
+      (*Switch)(Base+L, Base+c);
+      L=c;
+      }
+}
+
 void hsort(char * base, int nel, int width, int (*compare)(), void (*switcher)())
 {
 static int i,n,stop;
@@ -1250,20 +1657,6 @@ static int i,n,stop;
 }
 
 /*---------------------------------------------------------------------------*/
-static newsift_down(L,U) int L,U;
-{  int c;
-
-   while(1)
-      {c=L+L;
-      if(c>U) break;
-      if( (c+Width <= U) && ((*Comp)(Base+c+Width,Base+c)>0) ) c+= Width;
-      if ((*Comp)(Base+L,Base+c)>=0) break;
-      (*Switch)(Base+L, Base+c);
-      L=c;
-      }
-}
-
-
 
 //******************************************************************************
 //
@@ -1300,7 +1693,7 @@ char * UL_GetPath (char * path, char *dir)
       path++;
       dr++;
 
-      if ((*path == SLASHES) || (*path == NULL))
+      if ((*path == SLASHES) || (*path == 0))
          done = true;
    }
 
@@ -1327,6 +1720,7 @@ char * UL_GetPath (char * path, char *dir)
 
 boolean UL_ChangeDirectory (char *path)
 {
+#ifdef DOS
    char *p;
    char dir[9];
    char *d;
@@ -1361,6 +1755,11 @@ boolean UL_ChangeDirectory (char *path)
    }
 
    return (true);
+#else
+	STUB_FUNCTION;
+	
+	return false;
+#endif
 }
 
 
@@ -1383,6 +1782,7 @@ boolean UL_ChangeDirectory (char *path)
 
 boolean UL_ChangeDrive (char *drive)
 {
+#ifdef DOS
    unsigned d, total, tempd;
 
    d = toupper (*drive);
@@ -1396,6 +1796,11 @@ boolean UL_ChangeDrive (char *drive)
       return (false);
 
    return (true);
+#else
+	STUB_FUNCTION;
+	
+	return false;
+#endif
 }
 
 

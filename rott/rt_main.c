@@ -19,17 +19,25 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 #include "rt_def.h"
 #include "lumpy.h"
-#include <malloc.h>
-#include <dos.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <fcntl.h>
+#include <string.h>
+
+#ifdef DOS
+#include <malloc.h>
+#include <dos.h>
 #include <io.h>
 #include <conio.h>
 #include <graph.h>
-#include <string.h>
 #include <process.h>
+#include <direct.h>
+#include <bios.h>
+#else
+#include <signal.h>
+#endif
+
 #include "rt_actor.h"
 #include "rt_stat.h"
 #include "rt_vid.h"
@@ -69,10 +77,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cin_main.h"
 #include "rottnet.h"
 #include "rt_scale.h"
-
-#include <direct.h>
-#include <bios.h>
-
 
 #include "music.h"
 #include "fx_man.h"
@@ -140,8 +144,26 @@ boolean timelimitenabled;
 boolean demoexit;
 boolean noecho;
 
-void main ()
+void CheckCommandLineParameters( void );
+void PlayTurboGame( void );
+void Init_Tables (void);
+void CheckRemoteRidicule ( int scancode );
+
+#ifndef DOS
+extern void crash_print (int);
+#endif
+
+int main (int argc, char *argv[])
 {
+#ifndef DOS
+	_argc = argc;
+	_argv = argv;
+#endif
+
+#ifndef DOS
+   signal (11, crash_print);
+#endif
+
    // Set which release version we're on
    gamestate.Version = ROTTVERSION;
 
@@ -370,6 +392,8 @@ void main ()
 
 
    QuitGame();
+   
+   return 0;
 }
 
 void DrawRottTitle ( void )
@@ -603,7 +627,7 @@ void CheckCommandLineParameters( void )
          if (numplayers>MAXPLAYERS)
             Error("Too many players.\n");
          if (!quiet)
-            printf("Playing %ld player ROTT\n",numplayers);
+	     printf("Playing %ld player ROTT\n",(long int)numplayers);
          modemgame=true;
          if (rottcom->gametype==NETWORK_GAME)
             {
@@ -638,7 +662,7 @@ void CheckCommandLineParameters( void )
           timelimitenabled = true;
           timelimit = ParseNum(_argv[i + 1]);
           if (!quiet)
-             printf("Time Limit = %ld Seconds\n",timelimit);
+             printf("Time Limit = %ld Seconds\n",(long int)timelimit);
           timelimit *= VBLCOUNTER;
           break;
 
@@ -1305,6 +1329,8 @@ void GameLoop (void)
             fizzlein = true;
             playstate = ex_stillplaying;
          break;
+	 default:
+	     ;
          }
       }
    waminot();
@@ -1358,7 +1384,9 @@ void ShutDown ( void )
 
    ShutdownClientControls();
    I_ShutdownKeyboard();
+#ifdef DOS /* the UL_ErrorStartup() call is commented out... */
    UL_ErrorShutdown ();
+#endif
    ShutdownGameCommands();
    MU_Shutdown();
    I_ShutdownTimer();
@@ -1391,8 +1419,8 @@ void QuitGame ( void )
    MU_FadeOut(200);
    while (MU_FadeActive())
       {
-      int time=ticcount;
-      while (ticcount==time) {}
+      int time=GetTicCount();
+      while (GetTicCount()==time) {}
       }
 
    PrintMapStats();
@@ -1442,7 +1470,12 @@ void QuitGame ( void )
 #endif
       for (k = 0; k < 23; k++)
          printf ("\n");
+#if DOS
       memcpy ((byte *)0xB8000, txtscn, 4000);
+#elif defined (ANSIESC)
+      DisplayTextSplash (txtscn, 25);
+#endif
+
 #if (DEBUG == 1)
       px = ERRORVERSIONCOL;
       py = ERRORVERSIONROW;
@@ -1529,7 +1562,7 @@ void UpdateGameObjects ( void )
       waminot();
       }
 
-	atime=fasttics;
+	atime=GetFastTics();
 
    UpdateClientControls ();
 
@@ -1581,6 +1614,8 @@ void UpdateGameObjects ( void )
             case battle_end_round :
                SetWhoHaveWeapons();
                break;
+	    default:
+		;
             }
          if ( playstate == ex_battledone )
             {
@@ -1609,7 +1644,7 @@ void UpdateGameObjects ( void )
       if (GamePaused==true)
          break;
 		}
-   actortime=fasttics-atime;
+   actortime=GetFastTics()-atime;
 
    UpdateClientControls ();
 
@@ -1655,7 +1690,7 @@ void PauseLoop ( void )
 
    if ((RefreshPause == true) &&
        (GamePaused == true) &&
-       ((ticcount - pausedstartedticcount) >= blanktime))
+       ((GetTicCount() - pausedstartedticcount) >= blanktime))
       {
       RefreshPause = false;
       StartupScreenSaver();
@@ -1702,7 +1737,7 @@ fromloadedgame:
    drawtime  = 0;
    actortime = 0;
 	tics      = 0;
-	fasttics  = 0;
+	SetFastTics(0);
 
    if ( fizzlein == false )
       {
@@ -1736,7 +1771,7 @@ fromloadedgame:
          {
          PauseLoop();
 
-         atime = fasttics;
+         atime = GetFastTics();
 
          if ( RefreshPause )
             {
@@ -1752,14 +1787,14 @@ fromloadedgame:
          if (controlupdatestarted == 1)
             UpdateGameObjects();
 
-         atime = fasttics;
+         atime = GetFastTics();
 
          ThreeDRefresh();
          }
 
       SyncToServer();
 
-		drawtime = fasttics - atime;
+		drawtime = GetFastTics() - atime;
 
       // Don't allow player to quit if entering message
       canquit = !MSG.messageon;
@@ -1871,7 +1906,7 @@ fromloadedgame:
             if ( ( LastScan == sc_Escape ) && ( canquit ) )
                {
                quitactive = true;
-               quittime   = ticcount + QUITTIMEINTERVAL;
+               quittime   = GetTicCount() + QUITTIMEINTERVAL;
 
                if ( (consoleplayer == 0) || (networkgame == false) )
                   {
@@ -1887,7 +1922,7 @@ fromloadedgame:
             }
          else
             {
-            if ( ticcount > quittime )
+            if ( GetTicCount() > quittime )
                {
                quitactive = false;
                }
@@ -1980,6 +2015,7 @@ void CheckRemoteRidicule ( int scancode )
 
 void DoBossKey ( void )
 {
+#ifdef DOS
    union REGS regs;
    ShutdownClientControls();
 
@@ -2004,6 +2040,9 @@ void DoBossKey ( void )
    ThreeDRefresh();
 
    StartupClientControls();
+#else
+	STUB_FUNCTION;
+#endif
 }
 
 
@@ -2748,6 +2787,7 @@ void WriteLBMfile (char *filename, byte *data, int width, int height)
 
 void GetFileName (boolean saveLBM)
 {
+#ifdef DOS
    char num[4];
    int cnt = 0;
    struct find_t fblock;
@@ -2782,8 +2822,21 @@ void GetFileName (boolean saveLBM)
          savename[7] = num[0];
    }
    while (_dos_findfirst (savename, 0, &fblock) == 0);
+#else
+	int i;
+	
+	for (i = 0; i < 9999; i++) {
+		if (saveLBM) {
+	   		sprintf(savename, "rott%04d.lbm", i);
+	   	} else {
+	   		sprintf(savename, "rott%04d.pcx", i);
+	   	}
 
-
+		if (access(savename, F_OK) != 0) {
+			return;
+		}
+	}
+#endif
 }
 
 //****************************************************************************
